@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import {
@@ -244,19 +244,27 @@ function FloatingIsland({
   hidingAnchorRef: NullableRef<Group>;
 }) {
   const islandRef = useRef<Group>(null);
+  const goldOrbitRef = useRef<Group>(null);
+  const whiteOrbitRef = useRef<Group>(null);
 
   useFrame(({ clock }, delta) => {
     const island = islandRef.current;
-    if (!island) return;
+    const goldOrbit = goldOrbitRef.current;
+    const whiteOrbit = whiteOrbitRef.current;
+    const time = clock.elapsedTime;
 
-    if (reduceMotion) {
-      island.position.y = 0;
-      island.rotation.y = -0.28;
-      return;
+    if (island) {
+      if (reduceMotion) {
+        island.position.y = 0;
+        island.rotation.y = -0.28;
+      } else {
+        island.position.y = Math.sin(time * 0.82) * 0.045;
+        island.rotation.y += delta * 0.09;
+      }
     }
 
-    island.position.y = Math.sin(clock.elapsedTime * 0.82) * 0.045;
-    island.rotation.y += delta * 0.09;
+    if (goldOrbit) goldOrbit.rotation.z = reduceMotion ? -0.08 : -0.08 + time * 0.12;
+    if (whiteOrbit) whiteOrbit.rotation.z = reduceMotion ? 0.14 : 0.14 - time * 0.1;
   });
 
   return (
@@ -291,6 +299,19 @@ function FloatingIsland({
       </mesh>
       <group ref={starAnchorRef} position={[0.58, 0.46, 0.83]} />
       <group ref={hidingAnchorRef} position={[0, -0.34, -0.35]} />
+
+      <group ref={goldOrbitRef} position={[0, 0.08, 0]} rotation={[1.2, 0, -0.08]}>
+        <mesh>
+          <torusGeometry args={[1.66, 0.014, 8, 96]} />
+          <meshBasicMaterial color="#ffe36b" transparent opacity={0.94} toneMapped={false} />
+        </mesh>
+      </group>
+      <group ref={whiteOrbitRef} position={[0, 0.08, 0]} rotation={[1.2, 0, 0.14]}>
+        <mesh>
+          <torusGeometry args={[1.48, 0.01, 8, 96]} />
+          <meshBasicMaterial color="#ffffff" transparent opacity={0.86} toneMapped={false} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -635,6 +656,19 @@ function AdventureTip({
   );
 }
 
+function PlanetCanvasFallback({ onUnavailable }: { onUnavailable: () => void }) {
+  useEffect(() => {
+    onUnavailable();
+  }, [onUnavailable]);
+
+  return (
+    <div className="planet-loading">
+      <span className="planet-loading-island" aria-hidden="true">✦</span>
+      <span>Your 3D world is not available here.</span>
+    </div>
+  );
+}
+
 export default function Planet() {
   const containerRef = useRef<HTMLDivElement>(null);
   const leftCloudRef = useRef<Group>(null);
@@ -643,8 +677,10 @@ export default function Planet() {
   const hidingAnchorRef = useRef<Group>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(true);
+  const [canvasUnavailable, setCanvasUnavailable] = useState(false);
   const { phase, cycle, starPosition, reduceMotion, isSmallScreen } = useHideAndSeek();
   const thiefTexture = useThiefTexture();
+  const markCanvasUnavailable = useCallback(() => setCanvasUnavailable(true), []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -661,13 +697,14 @@ export default function Planet() {
   return (
     <div ref={containerRef} className="relative h-[350px] w-full sm:h-[410px]">
       <Canvas
-        aria-label="A tiny floating island with a cottage, trees, and a friendly character"
-        role="img"
+        aria-label={canvasUnavailable ? "The 3D island could not load" : "A tiny floating island with a cottage, trees, and a friendly character"}
+        role={canvasUnavailable ? "status" : "img"}
         camera={{ position: [0, 1.8, 5.6], fov: 38 }}
         dpr={isSmallScreen ? 1 : [1, 1.4]}
         frameloop={isVisible ? (reduceMotion ? "demand" : "always") : "never"}
         shadows={!isSmallScreen}
         gl={{ antialias: true, powerPreference: "low-power" }}
+        fallback={<PlanetCanvasFallback onUnavailable={markCanvasUnavailable} />}
       >
         <ResponsiveCamera />
         <ambientLight intensity={1.65} color="#eef9ff" />
@@ -690,7 +727,9 @@ export default function Planet() {
         />
         <OrbitControls enableZoom={false} enablePan={false} enableDamping dampingFactor={0.08} minPolarAngle={1.15} maxPolarAngle={1.8} />
       </Canvas>
-      <AdventureTip stageRef={stageRef} cycle={cycle} starPosition={starPosition} reduceMotion={reduceMotion} />
+      {!canvasUnavailable && (
+        <AdventureTip stageRef={stageRef} cycle={cycle} starPosition={starPosition} reduceMotion={reduceMotion} />
+      )}
     </div>
   );
 }

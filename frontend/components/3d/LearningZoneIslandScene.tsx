@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { Group } from "three";
 import type { LearningZoneKind } from "./LearningZoneIsland";
 
@@ -34,6 +34,37 @@ const islandPalettes: Record<LearningZoneKind, IslandPalette> = {
     grass: "#53b984", grassLight: "#9bdc83", tree: "#339c79", treeLight: "#7bd58c", accent: "#ffd34d",
   },
 };
+
+const fallbackIcons: Record<LearningZoneKind, string> = {
+  typing: "⌨",
+  english: "📖",
+  games: "🎮",
+  rewards: "🏆",
+};
+
+function SceneFramePacer({
+  active,
+  reduceMotion,
+  fps,
+}: {
+  active: boolean;
+  reduceMotion: boolean;
+  fps: number;
+}) {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    if (!active) return;
+
+    invalidate();
+    if (reduceMotion) return;
+
+    const timerId = window.setInterval(() => invalidate(), 1000 / fps);
+    return () => window.clearInterval(timerId);
+  }, [active, fps, invalidate, reduceMotion]);
+
+  return null;
+}
 
 function SwayingTree({
   position,
@@ -200,25 +231,19 @@ function ZoneLandmark({ kind, accent }: { kind: LearningZoneKind; accent: string
 function FloatingIsland({ kind, reduceMotion }: { kind: LearningZoneKind; reduceMotion: boolean }) {
   const palette = islandPalettes[kind];
   const islandRef = useRef<Group>(null);
-  const orbitRef = useRef<Group>(null);
-  const orbitInnerRef = useRef<Group>(null);
 
   useFrame(({ clock }) => {
     const time = clock.elapsedTime;
     const island = islandRef.current;
-    const orbit = orbitRef.current;
-    const orbitInner = orbitInnerRef.current;
     if (island) {
       island.position.y = reduceMotion ? 0 : Math.sin(time * 0.85) * 0.045;
       island.rotation.y = reduceMotion ? -0.18 : -0.18 + Math.sin(time * 0.34) * 0.035;
     }
-    if (orbit) orbit.rotation.z = reduceMotion ? 0 : time * 0.08;
-    if (orbitInner) orbitInner.rotation.z = reduceMotion ? 0 : -time * 0.05;
   });
 
   return (
-    <>
-      <group ref={islandRef} rotation={[-0.12, -0.18, -0.025]} scale={1.26}>
+    <group ref={islandRef} rotation={[-0.12, -0.18, -0.025]}>
+      <group scale={1.26}>
         <mesh position={[0, -0.3, 0]} scale={[1.08, 0.46, 0.84]}>
           <dodecahedronGeometry args={[1, 1]} />
           <meshStandardMaterial color={palette.rock} flatShading roughness={1} />
@@ -252,19 +277,7 @@ function FloatingIsland({ kind, reduceMotion }: { kind: LearningZoneKind; reduce
         <SwayingTree position={[0.8, 0.1, -0.3]} scale={0.62} phase={1.7} reduceMotion={reduceMotion} palette={palette} />
         <ZoneLandmark kind={kind} accent={palette.accent} />
       </group>
-      <group ref={orbitRef} rotation={[0.65, 0.08, 0]}>
-        <mesh>
-          <torusGeometry args={[1.58, 0.009, 6, 64]} />
-          <meshBasicMaterial color={palette.accent} transparent opacity={0.7} />
-        </mesh>
-      </group>
-      <group ref={orbitInnerRef} rotation={[-0.45, -0.1, 0]}>
-        <mesh>
-          <torusGeometry args={[1.32, 0.007, 6, 64]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.45} />
-        </mesh>
-      </group>
-    </>
+    </group>
   );
 }
 
@@ -308,19 +321,31 @@ export default function LearningZoneIslandScene({ kind }: { kind: LearningZoneKi
 
   return (
     <div ref={hostRef} className="space-zone-island-canvas-host">
-      <Canvas
-        className="space-zone-island-canvas"
-        camera={{ position: [0, 0.95, 3.15], fov: 44 }}
-        dpr={compact ? 1 : [1, 1.35]}
-        frameloop={isVisible ? (reduceMotion ? "demand" : "always") : "never"}
-        shadows={false}
-        gl={{ antialias: !compact, powerPreference: "low-power", alpha: true }}
-      >
-        <ambientLight intensity={1.7} color="#f5f9ff" />
-        <directionalLight position={[-3, 4, 4]} color="#fff0c8" intensity={2.2} />
-        <directionalLight position={[3, 2, -2]} color="#a7e8e3" intensity={0.85} />
-        <FloatingIsland kind={kind} reduceMotion={reduceMotion} />
-      </Canvas>
+      {isVisible ? (
+        <Canvas
+          className="space-zone-island-canvas"
+          camera={{ position: [0, 0.95, 3.15], fov: 44 }}
+          dpr={compact ? 1 : [1, 1.2]}
+          frameloop="demand"
+          shadows={false}
+          gl={{ antialias: !compact, powerPreference: "low-power", alpha: true }}
+          fallback={
+            <div className="space-zone-island-loading" aria-hidden="true">
+              <span>{fallbackIcons[kind]}</span>
+            </div>
+          }
+        >
+          <SceneFramePacer active={isVisible} reduceMotion={reduceMotion} fps={compact ? 30 : 45} />
+          <ambientLight intensity={1.7} color="#f5f9ff" />
+          <directionalLight position={[-3, 4, 4]} color="#fff0c8" intensity={2.2} />
+          <directionalLight position={[3, 2, -2]} color="#a7e8e3" intensity={0.85} />
+          <FloatingIsland kind={kind} reduceMotion={reduceMotion} />
+        </Canvas>
+      ) : (
+        <div className="space-zone-island-loading" aria-hidden="true">
+          <span>{fallbackIcons[kind]}</span>
+        </div>
+      )}
     </div>
   );
 }

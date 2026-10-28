@@ -184,12 +184,15 @@ function PracticeBoard({
         The timer starts with your first key. Fixes count as extra keys, and paste is turned off to keep
         scores fair.
       </p>
-      <p id="typing-feedback" aria-live="polite" aria-atomic="true" className="typing-feedback">
+      <p id="typing-feedback" aria-live="off" className="typing-feedback">
         {typedCharacters.length === 0
           ? `Ready when you are! ${remainingCharacters} characters to type.`
           : `${correctCharacters} correct · ${incorrectCharacters} to fix · ${remainingCharacters} left to type${
               hasMistypedCharacter ? ". Letters marked with ! need another try." : "."
             }`}
+      </p>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {hasMistypedCharacter ? "One or more letters need another try." : ""}
       </p>
     </>
   );

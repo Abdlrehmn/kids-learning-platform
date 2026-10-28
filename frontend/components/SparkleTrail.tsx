@@ -20,13 +20,17 @@ export default function SparkleTrail() {
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const coarsePointer = window.matchMedia("(pointer: coarse)");
-    if (reducedMotion.matches || coarsePointer.matches) return;
-
     let lastSpawn = { x: -999, y: -999 };
-    let activeSparkles = 0;
+    const activeSparkles = new Set<HTMLSpanElement>();
+    let isTrackingPointer = false;
+
+    const clearSparkles = () => {
+      activeSparkles.forEach((sparkle) => sparkle.remove());
+      activeSparkles.clear();
+    };
 
     const spawnSparkle = (clientX: number, clientY: number) => {
-      if (activeSparkles >= MAX_SPARKLES) return;
+      if (activeSparkles.size >= MAX_SPARKLES) return;
 
       const sparkle = document.createElement("span");
       sparkle.className = "sparkle-trail-bit";
@@ -36,12 +40,12 @@ export default function SparkleTrail() {
       sparkle.style.color = SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)];
       sparkle.style.fontSize = `${8 + Math.random() * 9}px`;
 
-      activeSparkles += 1;
+      activeSparkles.add(sparkle);
       sparkle.addEventListener(
         "animationend",
         () => {
           sparkle.remove();
-          activeSparkles -= 1;
+          activeSparkles.delete(sparkle);
         },
         { once: true },
       );
@@ -56,8 +60,30 @@ export default function SparkleTrail() {
       spawnSparkle(event.clientX, event.clientY);
     };
 
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    return () => window.removeEventListener("pointermove", handlePointerMove);
+    const updatePointerTracking = () => {
+      const shouldTrackPointer = !reducedMotion.matches && !coarsePointer.matches;
+      if (shouldTrackPointer === isTrackingPointer) return;
+
+      isTrackingPointer = shouldTrackPointer;
+      lastSpawn = { x: -999, y: -999 };
+      if (isTrackingPointer) {
+        window.addEventListener("pointermove", handlePointerMove, { passive: true });
+      } else {
+        window.removeEventListener("pointermove", handlePointerMove);
+        clearSparkles();
+      }
+    };
+
+    reducedMotion.addEventListener("change", updatePointerTracking);
+    coarsePointer.addEventListener("change", updatePointerTracking);
+    updatePointerTracking();
+
+    return () => {
+      reducedMotion.removeEventListener("change", updatePointerTracking);
+      coarsePointer.removeEventListener("change", updatePointerTracking);
+      window.removeEventListener("pointermove", handlePointerMove);
+      clearSparkles();
+    };
   }, []);
 
   return <div ref={containerRef} className="sparkle-trail" aria-hidden="true" />;

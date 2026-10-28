@@ -11,7 +11,7 @@ type WorldNavigationProps = {
 const destinations = [
   { label: "Home", href: "/", key: "home", icon: "⌂" },
   { label: "Typing", href: "/typing", key: "typing", icon: "⌨" },
-  { label: "English", href: "/#english-zone", key: "english", icon: "▣" },
+  { label: "English", href: "/english", key: "english", icon: "▣" },
   { label: "Games", href: "/#games", key: "games", icon: "✣" },
   { label: "Rewards", href: "/#rewards", key: "rewards", icon: "♜" },
 ] as const;
@@ -89,7 +89,7 @@ export default function WorldNavigation({ active = "home" }: WorldNavigationProp
         </nav>
 
         <Link
-          href={active === "typing" ? "#typing-practice" : "/typing"}
+          href={active === "english" ? "/english#ew-activity" : active === "typing" ? "#typing-practice" : "/typing"}
           className="space-header-cta"
           onClick={(event) => {
             setIsMenuOpen(false);
@@ -102,7 +102,7 @@ export default function WorldNavigation({ active = "home" }: WorldNavigationProp
           }}
         >
           <span className="space-cta-rocket" aria-hidden="true">↗</span>
-          {active === "typing" ? "Start typing" : "Start learning"}
+          {active === "typing" ? "Start typing" : "Start Learning"}
         </Link>
       </div>
     </header>

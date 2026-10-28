@@ -13,7 +13,7 @@ function ModeIcon({ id }: { id: PracticeMode }) {
     return (
       <svg className="typing-mode-card__icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <rect x="3.5" y="5.5" width="25" height="21" rx="6" fill="currentColor" opacity=".18" />
-        <text x="16" y="21" textAnchor="middle" fontSize="13" fontWeight="900" fill="currentColor" fontFamily="var(--font-geist-sans), sans-serif">
+        <text x="16" y="21" textAnchor="middle" fontSize="13" fontWeight="900" fill="currentColor" fontFamily="var(--font-kiddo-sans)">
           Aa
         </text>
       </svg>

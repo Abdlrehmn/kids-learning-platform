@@ -21,16 +21,26 @@ function BouncyLetters({ text, offset = 0 }: { text: string; offset?: number }) 
 function BouncyWords({ words, offset = 0 }: { words: string[]; offset?: number }) {
   return words.map((word, index) => (
     <span key={word} className="space-tagline-word" style={{ "--i": index + offset } as CSSProperties}>
-      {word}
+      {word}{index < words.length - 1 ? "\u00a0" : ""}
     </span>
   ));
 }
 
 const learningZones = [
   {
+    id: "english-zone",
+    title: "English World",
+    subtitle: "Vocabulary, spelling & stories",
+    description: "Explore words, stories, grammar, listening, speaking, and sentence games.",
+    symbol: "book",
+    color: "english",
+    state: "Ready to play",
+    href: "/english",
+  },
+  {
     id: "typing-zone",
     title: "Typing Academy",
-    subtitle: "Type · Improve · Achieve",
+    subtitle: "Type, practice & improve",
     description: "Build confident fingers with friendly letter, word, and sentence practice.",
     symbol: "keyboard",
     color: "typing",
@@ -38,19 +48,9 @@ const learningZones = [
     href: "/typing",
   },
   {
-    id: "english-zone",
-    title: "English World",
-    subtitle: "Learn · Read · Grow",
-    description: "A vocabulary and spelling adventure is being prepared for curious learners.",
-    symbol: "book",
-    color: "english",
-    state: "Coming soon",
-    href: null,
-  },
-  {
     id: "games",
-    title: "Fun Games",
-    subtitle: "Play · Learn · Win",
+    title: "Little Scientists",
+    subtitle: "Discover how things work",
     description: "Educational games are on the way. The activities here will be playable soon.",
     symbol: "game",
     color: "games",
@@ -59,8 +59,8 @@ const learningZones = [
   },
   {
     id: "rewards",
-    title: "Rewards & Progress",
-    subtitle: "Celebrate little steps",
+    title: "Puzzle Quest",
+    subtitle: "Play, solve & earn rewards",
     description: "Your practice results are shown during typing sessions; saved rewards are not available yet.",
     symbol: "treasure",
     color: "rewards",
@@ -106,8 +106,6 @@ function SkyDecor() {
       <span className="space-floating-island space-floating-island--left"><i /><b /><em /></span>
       <span className="space-floating-island space-floating-island--right">
         <i /><b /><em />
-        <span className="space-island-orbit space-island-orbit--outer" aria-hidden="true" style={{ "--start-angle": "-18deg" } as CSSProperties} />
-        <span className="space-island-orbit space-island-orbit--inner" aria-hidden="true" style={{ "--start-angle": "14deg" } as CSSProperties} />
       </span>
     </div>
   );
@@ -148,8 +146,6 @@ export default function Home() {
             </div>
 
             <div className="space-planet-wrap">
-              <span className="space-planet-orbit space-planet-orbit--outer" aria-hidden="true" />
-              <span className="space-planet-orbit space-planet-orbit--inner" aria-hidden="true" />
               <span className="space-planet-spark space-planet-spark--one" aria-hidden="true">✦</span>
               <span className="space-planet-spark space-planet-spark--two" aria-hidden="true">✧</span>
               <div className="space-planet-scene"><HideAndSeekShow><PlanetScene /></HideAndSeekShow></div>
@@ -163,7 +159,7 @@ export default function Home() {
           <section className="space-benefits" data-hide-target="benefit-strip" aria-label="What you can do in KiddoWorld">
             <div className="space-benefit">
               <span className="space-benefit-badge space-benefit-badge--book"><BenefitIcon kind="book" /></span>
-              <span><strong>Learn English</strong><small>Vocabulary adventures soon</small></span>
+              <span><strong>Learn English</strong><small>Words, stories, and grammar games</small></span>
             </div>
             <span className="space-benefit-divider" aria-hidden="true" />
             <div className="space-benefit">
@@ -217,7 +213,7 @@ export default function Home() {
                       <p className="space-zone-subtitle">{zone.subtitle}</p>
                       <p className="space-zone-description">{zone.description}</p>
                       <span className={`space-zone-action${zone.href ? " is-active" : ""}`}>
-                        {zone.href ? "Enter the academy" : "Adventure coming soon"}
+                        {zone.href ? "Explore" : "Coming soon"}
                         <span className="space-zone-arrow" aria-hidden="true">{zone.href ? "→" : "✦"}</span>
                       </span>
                     </div>

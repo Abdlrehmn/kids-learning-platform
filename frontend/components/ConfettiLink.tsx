@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { fireConfetti } from "@/components/Confetti";
 
 type ConfettiLinkProps = Omit<ComponentProps<typeof Link>, "onClick"> & {

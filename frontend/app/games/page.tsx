@@ -5,8 +5,8 @@ import "../english/english.css";
 import "../english/dashboard.css";
 
 export const metadata: Metadata = {
-  title: "Learning Games | KiddoWorld",
-  description: "Play vocabulary, grammar, spelling, listening, and story games in KiddoWorld.",
+  title: "Games World | KiddoWorld",
+  description: "Play colorful word, memory, puzzle, logic, and math games in KiddoWorld.",
 };
 
 export default function GamesPage() {

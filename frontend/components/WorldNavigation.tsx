@@ -5,14 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { fireConfetti } from "@/components/Confetti";
 
 type WorldNavigationProps = {
-  active?: "home" | "typing" | "english";
+  active?: "home" | "typing" | "english" | "games";
 };
 
 const destinations = [
   { label: "Home", href: "/", key: "home", icon: "⌂" },
   { label: "Typing", href: "/typing", key: "typing", icon: "⌨" },
   { label: "English", href: "/english", key: "english", icon: "▣" },
-  { label: "Games", href: "/#games", key: "games", icon: "✣" },
+  { label: "Games", href: "/games", key: "games", icon: "✣" },
   { label: "Rewards", href: "/#rewards", key: "rewards", icon: "♜" },
 ] as const;
 
@@ -89,7 +89,7 @@ export default function WorldNavigation({ active = "home" }: WorldNavigationProp
         </nav>
 
         <Link
-          href={active === "english" ? "/english#ew-activity" : active === "typing" ? "#typing-practice" : "/typing"}
+          href={active === "english" ? "/english#adventures" : active === "typing" ? "#typing-practice" : "/typing"}
           className="space-header-cta"
           onClick={(event) => {
             setIsMenuOpen(false);

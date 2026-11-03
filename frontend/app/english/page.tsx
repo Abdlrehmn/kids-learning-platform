@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import EnglishWorld from "@/components/english/EnglishWorld";
-import "./english.css";
 
 export const metadata: Metadata = {
   title: "English World | KiddoWorld",

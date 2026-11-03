@@ -22,7 +22,7 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## English World
 
-The English learning experience is available at `/english`. Activity content and earned progress are stored in the current browser's `localStorage` under `kiddoworld-english-progress-v1`. The app saves unique completed activity IDs, daily reward dates, and the last activity opened. It does not save an in-progress story page, quiz question, or tile arrangement, so reopening a lesson after a refresh starts that activity over. This first version has no Django English API, learner account, or cross-device sync; clearing browser storage resets its progress.
+English World starts at `/english`. Each adventure has its own page: `/english/vocabulary`, `/english/stories`, `/english/grammar`, `/english/listening`, `/english/speaking`, and `/english/sentences`. Activity content and earned progress are stored in the current browser's `localStorage` under `kiddoworld-english-progress-v1`. The app saves unique completed activity IDs, daily reward dates, and the last activity opened. It does not save an in-progress story page, quiz question, or tile arrangement, so reopening a lesson after a refresh starts that activity over. This first version has no Django English API, learner account, or cross-device sync; clearing browser storage resets its progress.
 
 Read-aloud and listening prompts use browser speech synthesis when it is available. Speaking uses browser speech recognition only when the browser exposes it and the learner grants microphone access. The text alternative checks the transcribed or entered words against the prompt; it does not measure pronunciation. Browser support and microphone permission vary by device.
 

@@ -1,3 +1,6 @@
+import { curriculumWordSets } from "./vocabularyCurriculum";
+import { conversationScenarios, expandedGrammarLessons, expandedStories } from "./curriculumExpansion";
+
 export type EnglishCategoryId =
   | "vocabulary"
   | "stories"
@@ -13,15 +16,16 @@ export type EnglishCategory = {
   subtitle: string;
   icon: string;
   tone: string;
+  level: string;
 };
 
 export const englishCategories: EnglishCategory[] = [
-  { id: "vocabulary", title: "Vocabulary Adventure", shortTitle: "Vocabulary", subtitle: "Discover new words", icon: "🔤", tone: "aqua" },
-  { id: "stories", title: "Story Land", shortTitle: "Stories", subtitle: "Read and understand", icon: "📚", tone: "coral" },
-  { id: "grammar", title: "Grammar Garden", shortTitle: "Grammar", subtitle: "Grow great sentences", icon: "🌱", tone: "violet" },
-  { id: "listening", title: "Listening Lagoon", shortTitle: "Listening", subtitle: "Listen and choose", icon: "🎧", tone: "blue" },
-  { id: "speaking", title: "Speaking Studio", shortTitle: "Speaking", subtitle: "Practise saying it", icon: "🎙️", tone: "pink" },
-  { id: "sentences", title: "Sentence Builder", shortTitle: "Sentences", subtitle: "Put words in order", icon: "🧩", tone: "green" },
+  { id: "vocabulary", title: "Vocabulary Adventure", shortTitle: "Vocabulary", subtitle: "Discover new words", icon: "🔤", tone: "aqua", level: "Beginner" },
+  { id: "stories", title: "Story Land", shortTitle: "Stories", subtitle: "Read and understand", icon: "📚", tone: "coral", level: "Beginner" },
+  { id: "grammar", title: "Grammar Garden", shortTitle: "Grammar", subtitle: "Grow great sentences", icon: "🌱", tone: "violet", level: "Beginner" },
+  { id: "listening", title: "Listening Lagoon", shortTitle: "Listening", subtitle: "Listen and choose", icon: "🎧", tone: "blue", level: "Beginner" },
+  { id: "speaking", title: "Speaking Studio", shortTitle: "Speaking", subtitle: "Practise saying it", icon: "🎙️", tone: "pink", level: "Beginner" },
+  { id: "sentences", title: "Conversation Corner", shortTitle: "Conversation", subtitle: "Build sentences and talk", icon: "💬", tone: "green", level: "Beginner" },
 ];
 
 export type WordCard = {
@@ -30,6 +34,17 @@ export type WordCard = {
   picture: string;
   meaning: string;
   sentence: string;
+  pronunciation?: string;
+  topic?: string;
+  level?: "Beginner" | "Intermediate" | "Advanced";
+  colorHex?: string;
+};
+
+const colorSwatches: Record<string, string> = {
+  red: "#ef4444", cyan: "#06b6d4", yellow: "#facc15", green: "#22c55e", blue: "#3b82f6",
+  purple: "#8b5cf6", pink: "#ec4899", brown: "#8b5e3c", black: "#202124", white: "#ffffff",
+  gray: "#9ca3af", silver: "#a8b3c2", gold: "#eab308", turquoise: "#14b8a6", violet: "#7c3aed",
+  beige: "#d6c3a1", navy: "#1e3a8a", maroon: "#7f1d1d",
 };
 
 export type WordSet = {
@@ -39,7 +54,7 @@ export type WordSet = {
   words: WordCard[];
 };
 
-export const wordSets: WordSet[] = [
+const starterWordSets: WordSet[] = [
   {
     id: "animals", label: "Animals", icon: "🐾", words: [
       { id: "cat", word: "cat", picture: "🐱", meaning: "A small furry pet that says meow.", sentence: "The cat naps on a soft rug." },
@@ -50,10 +65,10 @@ export const wordSets: WordSet[] = [
   },
   {
     id: "colors", label: "Colors", icon: "🎨", words: [
-      { id: "blue", word: "blue", picture: "🫐", meaning: "The color of a clear daytime sky.", sentence: "I see a blue kite above the park." },
-      { id: "yellow", word: "yellow", picture: "🌻", meaning: "The bright color of sunshine and lemons.", sentence: "The yellow sun warms the garden." },
-      { id: "green", word: "green", picture: "🍀", meaning: "The color of fresh leaves and grass.", sentence: "A green frog sits on a lily pad." },
-      { id: "purple", word: "purple", picture: "🍇", meaning: "A color made from red and blue.", sentence: "She picked a purple flower." },
+      { id: "blue", word: "blue", picture: "🔵", colorHex: colorSwatches.blue, meaning: "The color of a clear daytime sky.", sentence: "I see a blue kite above the park." },
+      { id: "yellow", word: "yellow", picture: "🟡", colorHex: colorSwatches.yellow, meaning: "The bright color of sunshine and lemons.", sentence: "The yellow sun warms the garden." },
+      { id: "green", word: "green", picture: "🟢", colorHex: colorSwatches.green, meaning: "The color of fresh leaves and grass.", sentence: "A green frog sits on a lily pad." },
+      { id: "purple", word: "purple", picture: "🟣", colorHex: colorSwatches.purple, meaning: "A color made from red and blue.", sentence: "She picked a purple flower." },
     ],
   },
   {
@@ -89,6 +104,45 @@ export const wordSets: WordSet[] = [
     ],
   },
 ];
+
+const starterSetIds = new Set(starterWordSets.map((set) => set.id));
+const curriculumSetsById = new Map(curriculumWordSets.map((set) => [set.id, set]));
+const starterWordIds = new Set(starterWordSets.flatMap((set) => set.words.map((word) => word.id)));
+
+export const wordSets: WordSet[] = [
+  ...starterWordSets.map((set) => ({
+    ...set,
+    words: [
+      ...set.words,
+      ...(curriculumSetsById.get(set.id)?.words.filter((word) => !starterWordIds.has(word.id)) ?? []),
+    ],
+  })),
+  ...curriculumWordSets.filter((set) => !starterSetIds.has(set.id)),
+];
+
+export type SpellingTile = { character: string; sourceIndex: number };
+
+export function createSpellingTiles(word: string): SpellingTile[] {
+  const characters = Array.from(word.toLocaleUpperCase());
+  const shuffled = characters.map((character, sourceIndex) => ({ character, sourceIndex })).reverse();
+  if (shuffled.length > 1 && shuffled.every((tile, index) => tile.character === characters[index])) {
+    shuffled.push(shuffled.shift()!);
+  }
+  return shuffled;
+}
+
+export function validateSpellingWord(word: string): boolean {
+  const answer = Array.from(word.toLocaleUpperCase());
+  const tiles = createSpellingTiles(word);
+  return Boolean(word.trim())
+    && tiles.length === answer.length
+    && new Set(tiles.map((tile) => tile.sourceIndex)).size === answer.length
+    && tiles.every((tile) => tile.character === answer[tile.sourceIndex])
+    && tiles.map((tile) => tile.character).sort().join("") === [...answer].sort().join("");
+}
+
+const invalidSpellingWords = wordSets.flatMap((set) => set.words.filter((word) => !validateSpellingWord(word.word)).map((word) => `${set.id}:${word.word}`));
+if (invalidSpellingWords.length) throw new Error(`Vocabulary spelling data is invalid: ${invalidSpellingWords.join(", ")}`);
 
 export type Story = {
   id: string;
@@ -133,8 +187,10 @@ export const stories: Story[] = [
   },
 ];
 
+stories.push(...expandedStories);
+
 export type QuizQuestion = { prompt: string; choices: string[]; answer: string; explanation: string };
-export type GrammarLesson = { id: string; title: string; icon: string; explanation: string; example: string; questions: QuizQuestion[] };
+export type GrammarLesson = { id: string; title: string; icon: string; explanation: string; example: string; questions: QuizQuestion[]; level?: "Beginner" | "Intermediate" | "Advanced" };
 
 export const grammarLessons: GrammarLesson[] = [
   { id: "nouns", title: "Nouns", icon: "📕", explanation: "A noun names a person, place, animal, or thing.", example: "The rabbit visits the garden.", questions: [
@@ -167,6 +223,8 @@ export const grammarLessons: GrammarLesson[] = [
   ] },
 ];
 
+grammarLessons.push(...expandedGrammarLessons);
+
 export const partsOfSpeechRounds = [
   { sentence: "The sleepy cat yawns.", target: "adjective", answer: "sleepy", hint: "Which word describes the cat?" },
   { sentence: "Birds fly above us.", target: "verb", answer: "fly", hint: "Which word tells the action?" },
@@ -183,12 +241,28 @@ export const listeningActivities: ListeningActivity[] = [
   { id: "listen-place", prompt: "Where are the children?", picture: "🛝", choices: ["At the park", "In a boat", "On the moon"], answer: "At the park", speak: "The children play together at the park." },
 ];
 
+const listeningWords = [...new Map(wordSets.flatMap((set) => set.words).map((word) => [word.id, word])).values()];
+const generatedListening: ListeningActivity[] = listeningWords.slice(0, 100).map((word, index) => {
+  const distractors = listeningWords.filter((candidate) => candidate.id !== word.id).slice(index, index + 3);
+  const choices = [word, ...distractors].map((candidate) => candidate.word);
+  return { id: `listen-word-${word.id}`, prompt: "Which word did you hear?", picture: "🔊", choices, answer: word.word, speak: word.word };
+});
+listeningActivities.push(...generatedListening);
+
+export { conversationScenarios };
+
 export const speakingPrompts = [
   { id: "speak-hello", text: "Hello, how are you?", hint: "Say hello with a friendly voice." },
   { id: "speak-blue", text: "The sky is blue.", hint: "Say each word slowly and clearly." },
   { id: "speak-book", text: "I like to read books.", hint: "Tap the example, then try the sentence." },
   { id: "speak-bird", text: "A bird can fly.", hint: "Listen for the short words: a, can." },
 ];
+const generatedSpeaking: typeof speakingPrompts = listeningWords.slice(0, 50).map((word) => ({
+  id: `speak-word-${word.id}`,
+  text: word.sentence,
+  hint: `Say “${word.word}” slowly, then try the whole sentence. The check looks at words, not accent.`,
+}));
+speakingPrompts.push(...generatedSpeaking);
 
 export type SentencePrompt = { id: string; sentence: string; tiles: string[]; hint: string };
 export const sentencePrompts: SentencePrompt[] = [
@@ -207,3 +281,22 @@ export const dailyChallengeTargets: Array<{ category: EnglishCategoryId; activit
   { category: "speaking", activityId: "speaking-speak-hello", title: "Say a sentence aloud", subtitle: "Practise one phrase with a supported tool or text check." },
   { category: "sentences", activityId: "sentence-sentence-bird", title: "Build a tidy sentence", subtitle: "Put the word tiles in a sentence that makes sense." },
 ];
+
+const curriculumChecks: Array<[string, number]> = [
+  ["vocabulary words", listeningWords.length],
+  ["stories", stories.length],
+  ["grammar lessons", grammarLessons.length],
+  ["grammar questions", grammarLessons.reduce((count, lesson) => count + lesson.questions.length, 0)],
+  ["listening activities", listeningActivities.length],
+  ["conversation scenarios", conversationScenarios.length],
+];
+const curriculumMinimums = [500, 50, 30, 300, 100, 50];
+curriculumChecks.forEach(([label, count], index) => {
+  if (count < curriculumMinimums[index]) throw new Error(`English curriculum needs at least ${curriculumMinimums[index]} ${label}; found ${count}.`);
+});
+if (new Set(stories.map((story) => story.id)).size !== stories.length) throw new Error("Story IDs must be unique.");
+if (new Set(grammarLessons.map((lesson) => lesson.id)).size !== grammarLessons.length) throw new Error("Grammar lesson IDs must be unique.");
+if (grammarLessons.some((lesson) => lesson.questions.some((question) => !question.choices.includes(question.answer)))) throw new Error("Every grammar question must include its correct answer.");
+if (stories.some((story) => !story.choices.includes(story.answer))) throw new Error("Every story question must include its correct answer.");
+if (listeningActivities.some((activity) => !activity.choices.includes(activity.answer))) throw new Error("Every listening exercise must include its correct answer.");
+if (conversationScenarios.some((scenario) => !scenario.choices.includes(scenario.answer))) throw new Error("Every dialogue must include its correct response.");

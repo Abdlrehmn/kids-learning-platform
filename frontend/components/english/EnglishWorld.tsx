@@ -1,30 +1,45 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import Link from "next/link";
 import WorldNavigation from "@/components/WorldNavigation";
 import LearningZoneIsland from "@/components/3d/LearningZoneIsland";
 import { fireConfetti } from "@/components/Confetti";
+import AdventureGlyph from "./AdventureGlyph";
+import AdventureIllustration from "./AdventureIllustration";
+import TopicIllustration from "./TopicIllustration";
 import {
   dailyChallengeTargets,
   englishCategories,
   grammarLessons,
   listeningActivities,
+  conversationScenarios,
   partsOfSpeechRounds,
   sentencePrompts,
   speakingPrompts,
   stories,
   wordSets,
+  createSpellingTiles,
   type EnglishCategoryId,
+  type WordCard,
 } from "./englishContent";
 
 type ProgressRecord = {
   completed: string[];
   dailyAwards: string[];
   lastActivityId: string | null;
+  reviewWordIds: string[];
 };
 
 const STORAGE_KEY = "kiddoworld-english-progress-v1";
-const EMPTY_PROGRESS: ProgressRecord = { completed: [], dailyAwards: [], lastActivityId: null };
+const EMPTY_PROGRESS: ProgressRecord = { completed: [], dailyAwards: [], lastActivityId: null, reviewWordIds: [] };
+const OPEN_IN_NEW_TAB = { target: "_blank", rel: "noopener noreferrer" } as const;
+
+function VocabularyPicture({ word }: { word: WordCard }) {
+  return word.colorHex
+    ? <span className="ew-color-swatch" style={{ "--ew-swatch-color": word.colorHex } as React.CSSProperties} aria-hidden="true" />
+    : <span aria-hidden="true">{word.picture}</span>;
+}
 
 type SpeechRecognitionResultLike = { transcript: string };
 type SpeechRecognitionEventLike = { results: ArrayLike<ArrayLike<SpeechRecognitionResultLike>> };
@@ -49,7 +64,8 @@ function isProgressRecord(value: unknown): value is ProgressRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as Partial<ProgressRecord>;
   return Array.isArray(record.completed) && Array.isArray(record.dailyAwards) &&
-    (typeof record.lastActivityId === "string" || record.lastActivityId === null);
+    (typeof record.lastActivityId === "string" || record.lastActivityId === null) &&
+    (record.reviewWordIds === undefined || Array.isArray(record.reviewWordIds));
 }
 
 function getDateKey(date = new Date()) {
@@ -79,7 +95,7 @@ function activityTitle(id: string | null) {
   if (id.startsWith("grammar-")) return grammarLessons.find((item) => item.id === id.slice("grammar-".length))?.title ?? "Grammar Garden";
   if (id.startsWith("listening-")) return listeningActivities.find((item) => item.id === id.slice("listening-".length))?.prompt ?? "Listening Lagoon";
   if (id.startsWith("speaking-")) return speakingPrompts.find((item) => item.id === id.slice("speaking-".length))?.text ?? "Speaking Studio";
-  if (id.startsWith("sentence-")) return sentencePrompts.find((item) => item.id === id.slice("sentence-".length))?.sentence ?? "Sentence Builder";
+  if (id.startsWith("sentence-")) return sentencePrompts.find((item) => item.id === id.slice("sentence-".length))?.sentence ?? conversationScenarios.find((item) => item.id === id.slice("sentence-".length))?.title ?? "Sentence Builder";
   if (id.startsWith("match-")) return `Picture match · ${wordSets.find((item) => item.id === id.slice("match-".length))?.label ?? "Vocabulary"}`;
   if (id.startsWith("spelling-")) return `Spelling puzzle · ${wordSets.find((item) => item.id === id.slice("spelling-".length))?.label ?? "Vocabulary"}`;
   return "English World";
@@ -95,6 +111,96 @@ function categoryCompletionCount(categoryId: EnglishCategoryId, completed: strin
     sentences: ["sentence-"],
   };
   return completed.filter((id) => prefixes[categoryId].some((prefix) => id.startsWith(prefix))).length;
+}
+
+function topicActivityIds(categoryId: EnglishCategoryId, activityId: string) {
+  if (categoryId === "vocabulary") {
+    const setId = activityId.slice("vocabulary-".length);
+    return [`vocabulary-${setId}`, `match-${setId}`, `spelling-${setId}`];
+  }
+  return [activityId];
+}
+
+const categoryDescriptions: Record<EnglishCategoryId, string> = {
+  vocabulary: "Meet new words, look closely at their pictures, and practise matching sounds and spelling.",
+  stories: "Open a storybook, read at your own pace, and look for clues in every page.",
+  grammar: "Grow clear sentences by noticing the jobs words do and the way they fit together.",
+  listening: "Listen carefully, replay each sentence, and choose the picture that matches what you hear.",
+  speaking: "Hear a friendly example, practise a phrase, and use the honest voice or text tools on your device.",
+  sentences: "Arrange word tiles into a clear sentence, then read it aloud as a little conversation.",
+};
+
+const featureWords: Record<EnglishCategoryId, [string, string]> = {
+  vocabulary: ["Aa", "new words"],
+  stories: ["Once…", "read"],
+  grammar: ["N + V", "grow"],
+  listening: ["Listen", "♪"],
+  speaking: ["Hello!", "say it"],
+  sentences: ["I can…", "build"],
+};
+
+const totalEnglishActivities = englishCategories.reduce(
+  (total, category) => total + categoryActivityTotal(category.id),
+  0,
+);
+
+type TopicCard = {
+  activityId: string;
+  title: string;
+  description: string;
+  tag: string;
+};
+
+const grammarTopicOrder = ["nouns", "verbs", "adjectives", "punctuation", "tenses"];
+
+function topicsForCategory(categoryId: EnglishCategoryId): TopicCard[] {
+  switch (categoryId) {
+    case "vocabulary":
+      return wordSets.map((set) => ({
+        activityId: `vocabulary-${set.id}`,
+        title: set.label,
+        description: `${set.words.slice(0, 4).map((word) => word.word).join(" · ")}${set.words.length > 4 ? " and more" : ""}`,
+        tag: `${set.words.length} words · ${set.words[0]?.level ?? "Beginner"}`,
+      }));
+    case "stories":
+      return stories.map((story) => ({
+        activityId: `story-${story.id}`,
+        title: story.title,
+        description: story.vocabulary.join(" · "),
+        tag: `${story.minutes} min read`,
+      }));
+    case "grammar":
+      return grammarTopicOrder.flatMap((id) => {
+        const lesson = grammarLessons.find((item) => item.id === id);
+        return lesson ? [{
+          activityId: `grammar-${lesson.id}`,
+          title: lesson.title,
+          description: lesson.explanation,
+          tag: `${lesson.level ?? "Beginner"} · ${lesson.questions.length} questions`,
+        }] : [];
+      });
+    case "listening":
+      return listeningActivities.map((activity) => ({
+        activityId: `listening-${activity.id}`,
+        title: activity.prompt,
+        description: `Play the sentence, then choose from ${activity.choices.length} friendly answers.`,
+        tag: "Listen & choose",
+      }));
+    case "speaking":
+      return speakingPrompts.map((prompt) => ({
+        activityId: `speaking-${prompt.id}`,
+        title: prompt.text,
+        description: prompt.hint,
+        tag: "Say it aloud",
+      }));
+    case "sentences":
+      return sentencePrompts.map((prompt) => ({
+        activityId: `sentence-${prompt.id}`,
+        title: prompt.sentence,
+        description: prompt.hint,
+        tag: "Sentence builder",
+      }));
+  }
 }
 
 function highlightStoryVocabulary(text: string, words: string[]) {
@@ -121,154 +227,652 @@ function ProgressBar({ value, label }: { value: number; label: string }) {
   );
 }
 
-function WorldMascot() {
+function ReaderMascot() {
   return (
-    <div className="ew-mascot-scene" aria-hidden="true">
-      <span className="ew-mascot-spark ew-mascot-spark--one">✦</span>
-      <span className="ew-mascot-spark ew-mascot-spark--two">✧</span>
-      <div className="ew-mascot">
-        <span className="ew-mascot-hat"><i /><b /></span>
-        <span className="ew-mascot-hair" />
-        <span className="ew-mascot-face"><i /><b /><em /></span>
-        <span className="ew-mascot-body" />
-        <span className="ew-mascot-book">📖</span>
-      </div>
-      <span className="ew-mascot-orbit" />
-    </div>
+    <svg className="ew-reader-mascot" viewBox="0 0 300 300" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="ew-reader-shirt" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#42b7ff" /><stop offset="1" stopColor="#586de4" /></linearGradient>
+        <linearGradient id="ew-reader-book" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#a984ff" /><stop offset="1" stopColor="#6946d9" /></linearGradient>
+        <filter id="ew-reader-shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="11" stdDeviation="9" floodColor="#234e9b" floodOpacity=".25" /></filter>
+      </defs>
+      <ellipse cx="151" cy="274" rx="116" ry="18" fill="#fff" opacity=".45" />
+      <g filter="url(#ew-reader-shadow)">
+        <path d="M38 274c5-58 37-95 94-101h49c55 8 79 44 84 101Z" fill="url(#ew-reader-shirt)" stroke="#e5f6ff" strokeWidth="7" />
+        <path d="M121 173h57v50h-57Z" fill="#f1a77e" />
+        <path d="M81 89c0-43 31-70 72-70 45 0 75 31 72 77l-4 39c-4 46-38 69-75 68-41-1-69-31-70-71Z" fill="#f6bd91" stroke="#b96a50" strokeWidth="6" />
+        <path d="M78 100c-6-48 20-82 64-88 39-6 71 13 82 45l-10 20c-19-4-32-14-44-28-13 19-40 35-87 38l-2 35Z" fill="#653621" />
+        <path d="M94 66c15-27 38-37 57-36m-24 42c23-3 44-14 58-30m-93 53c2-13 9-22 20-26" fill="none" stroke="#9a5231" strokeWidth="13" strokeLinecap="round" />
+        <ellipse cx="124" cy="120" rx="8" ry="12" fill="#3d3340" /><ellipse cx="180" cy="119" rx="8" ry="12" fill="#3d3340" />
+        <circle cx="127" cy="116" r="3" fill="#fff" /><circle cx="183" cy="115" r="3" fill="#fff" />
+        <path d="M137 149c10 11 24 12 35 1" fill="none" stroke="#a44759" strokeWidth="5" strokeLinecap="round" />
+        <path d="M93 202c29 29 77 35 116 1" fill="none" stroke="#f5c398" strokeWidth="22" strokeLinecap="round" />
+        <path d="M81 225c25-18 49-17 73 3v44c-25-19-49-18-73 1Z" fill="url(#ew-reader-book)" stroke="#ffe28b" strokeWidth="5" />
+        <path d="M154 228c24-20 49-21 74-4v49c-25-16-50-15-74 2Z" fill="#8560e8" stroke="#ffe28b" strokeWidth="5" />
+        <path d="M154 229v46" stroke="#fff2cb" strokeWidth="4" />
+        <path d="M94 240c14-6 27-5 43 3m-43 10c13-5 26-4 39 2m-39 9c13-4 25-3 37 2m38-24c13-5 25-5 39 0m-39 11c12-4 24-4 36 0m-36 10c11-3 21-3 32 1" fill="none" stroke="#f5e7ff" strokeWidth="3.5" strokeLinecap="round" opacity=".83" />
+      </g>
+      <path className="ew-reader-spark ew-reader-spark--one" d="m47 79 6 15 16 1-12 10 4 15-14-8-13 8 3-15-12-10 16-1Z" fill="#ffe875" />
+      <path className="ew-reader-spark ew-reader-spark--two" d="m248 108 4 10 11 1-8 7 3 11-10-6-9 6 2-11-8-7 11-1Z" fill="#fff" />
+    </svg>
   );
 }
 
-function EnglishHero({ onStart }: { onStart: () => void }) {
+function FloatingLearningIsland() {
   return (
-    <section className="ew-hero" aria-labelledby="english-world-title">
-      <span className="ew-cloud ew-cloud--one" aria-hidden="true" />
-      <span className="ew-cloud ew-cloud--two" aria-hidden="true" />
-      <span className="ew-hero-letter ew-hero-letter--one" aria-hidden="true">A</span>
-      <span className="ew-hero-letter ew-hero-letter--two" aria-hidden="true">b</span>
-      <span className="ew-hero-letter ew-hero-letter--three" aria-hidden="true">C</span>
-      <span className="ew-hero-star ew-hero-star--one" aria-hidden="true">✦</span>
-      <span className="ew-hero-star ew-hero-star--two" aria-hidden="true">✧</span>
-      <WorldMascot />
+    <svg className="ew-island-artwork" viewBox="0 0 460 340" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="ew-island-grass" x1="90" y1="85" x2="340" y2="265" gradientUnits="userSpaceOnUse"><stop stopColor="#c5f875" /><stop offset=".55" stopColor="#54d19c" /><stop offset="1" stopColor="#25aeb0" /></linearGradient>
+        <linearGradient id="ew-island-cliff" x1="100" y1="206" x2="330" y2="340" gradientUnits="userSpaceOnUse"><stop stopColor="#b56e8e" /><stop offset=".54" stopColor="#805c9e" /><stop offset="1" stopColor="#4d67b0" /></linearGradient>
+        <linearGradient id="ew-island-water" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#a9ffff" /><stop offset="1" stopColor="#50c9f5" /></linearGradient>
+        <linearGradient id="ew-island-roof" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#ff9ac4" /><stop offset="1" stopColor="#df558e" /></linearGradient>
+        <filter id="ew-island-drop" x="-25%" y="-25%" width="150%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#254e99" floodOpacity=".28" /></filter>
+        <filter id="ew-island-prop-shadow" x="-25%" y="-30%" width="150%" height="170%"><feDropShadow dx="0" dy="5" stdDeviation="3" floodColor="#234c86" floodOpacity=".2" /></filter>
+      </defs>
+      <ellipse cx="237" cy="299" rx="180" ry="22" fill="#175bb9" opacity=".18" />
+      <g className="ew-island-floating-art" filter="url(#ew-island-drop)">
+        <path d="M52 190c19-38 65-59 104-58 31-44 88-50 126-21 37-30 95-10 112 29 35 8 64 28 77 61l-18 38-39 31-61 12-55 36-55-21-66 17-55-29-62-7-43-31-14-30Z" fill="url(#ew-island-cliff)" />
+        <path d="m104 247 53 9 40 25 64-16 47 17 46-29 47-10 35-30-3 21-38 34-49 10-43 29-56-17-65 18-59-28-51-6-31-22Z" fill="#d2859e" opacity=".75" />
+        <path className="ew-island-waterfall" d="m148 255 8 43 20 18 14-10-7-40m58 2 8 48 18 12 13-9-10-54m39-15 5 36 19 10 10-8-5-44" fill="url(#ew-island-water)" />
+        <path d="M44 193c19-42 73-62 111-57 35-45 91-47 127-20 37-29 96-11 113 28 34 8 65 28 76 55-26 29-65 39-100 35-37 22-85 17-116 1-43 20-90 12-120-4-36 14-77 1-91-15Z" fill="url(#ew-island-grass)" stroke="#e4ffc0" strokeWidth="5" />
+        <path d="M66 197c22-20 47-23 71-9m101-65c17-10 35-7 47 4m98 61c18-12 35-11 49-2" fill="none" stroke="#e8ffbb" strokeWidth="7" strokeLinecap="round" opacity=".8" />
+        <path d="M72 214c33 15 72 8 98-2m84 16c31 11 70 7 102-7" fill="none" stroke="#2ebf94" strokeWidth="8" strokeLinecap="round" opacity=".55" />
+      </g>
+      <g className="ew-island-trees" filter="url(#ew-island-prop-shadow)">
+        <path d="M105 174h12v36h-12z" fill="#a9684b" /><circle cx="111" cy="158" r="22" fill="#30ad77" /><circle cx="96" cy="169" r="16" fill="#53c988" /><circle cx="126" cy="170" r="17" fill="#2bb884" /><circle cx="111" cy="144" r="14" fill="#73d95d" />
+        <path d="M353 173h11v32h-11z" fill="#ad6a4d" /><circle cx="359" cy="158" r="20" fill="#24a979" /><circle cx="344" cy="167" r="15" fill="#6bd35c" /><circle cx="373" cy="167" r="16" fill="#39c88a" /><circle cx="359" cy="145" r="13" fill="#8ce25f" />
+      </g>
+      <g className="ew-island-castle" filter="url(#ew-island-prop-shadow)">
+        <path d="M190 111h33v83h-33zm75-13h37v94h-37zm34 28h29v69h-29z" fill="#fff4dd" stroke="#e5c5d8" strokeWidth="3" />
+        <path d="m181 115 25-36 26 36Zm66-13 37-53 38 53Zm42 29 20-30 21 30Z" fill="url(#ew-island-roof)" stroke="#fff2ef" strokeWidth="4" strokeLinejoin="round" />
+        <path d="M204 144h12v18h-12zm77-14h14v20h-14zm-18 42h17v28h-17z" fill="#82dff5" stroke="#fff" strokeWidth="3" />
+        <g className="ew-island-flags">
+          <path d="M282 48V24m0 1 31 8-31 8M204 83V60m0 1 22 6-22 7" fill="none" stroke="#8c5cc7" strokeWidth="4" strokeLinecap="round" />
+          <path d="m276 29 34 8-28 8Zm-71 34 24 7-20 7Z" fill="#ffdc69" />
+        </g>
+      </g>
+      <g className="ew-island-book" filter="url(#ew-island-prop-shadow)">
+        <path d="M123 187c25-19 51-20 75-4v57c-24-15-49-16-75 2Z" fill="#743fd0" stroke="#fff0a4" strokeWidth="5" strokeLinejoin="round" />
+        <path d="M198 183c25-17 51-17 75 2v57c-25-17-50-16-75-2Z" fill="#9c64ed" stroke="#fff0a4" strokeWidth="5" strokeLinejoin="round" />
+        <path d="M198 185v56m-61-44c17-6 32-3 47 4m-47 10c16-5 31-3 46 4m33-14c17-7 32-6 47 1m-46 11c15-6 29-5 43 0" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity=".85" />
+        <path d="m192 181 7-14 7 14" fill="#ffda67" />
+      </g>
+      <g className="ew-island-learning-blocks" filter="url(#ew-island-prop-shadow)">
+        <rect x="307" y="190" width="34" height="34" rx="7" fill="#ffae54" stroke="#fff" strokeWidth="3" /><text x="324" y="214" textAnchor="middle" fill="#fff" fontSize="19" fontWeight="900">A</text>
+        <rect x="332" y="211" width="34" height="34" rx="7" fill="#55cfe0" stroke="#fff" strokeWidth="3" /><text x="349" y="235" textAnchor="middle" fill="#fff" fontSize="19" fontWeight="900">B</text>
+      </g>
+      <g className="ew-island-flowers" fill="#fff2a3"><circle cx="81" cy="202" r="5" /><circle cx="88" cy="196" r="5" /><circle cx="95" cy="202" r="5" /><circle cx="88" cy="208" r="5" /><circle cx="88" cy="202" r="3" fill="#ff9b68" /><circle cx="393" cy="199" r="5" /><circle cx="400" cy="193" r="5" /><circle cx="407" cy="199" r="5" /><circle cx="400" cy="205" r="5" /><circle cx="400" cy="199" r="3" fill="#ff9b68" /></g>
+    </svg>
+  );
+}
+
+function DistantCastle({ className = "" }: { className?: string }) {
+  return (
+    <svg className={`ew-hero-castle ${className}`} viewBox="0 0 190 150" aria-hidden="true" focusable="false">
+      <g fill="#d8ecff" stroke="#a9d7f4" strokeWidth="2">
+        <path d="M23 140V71h25v69Zm43 0V55h32v85Zm50 0V83h26v57Zm35 0V96h19v44Z" />
+        <path d="M13 71h45l-9-18-13 10-14-10Zm33-16h52l-12-21-15 12-13-12Zm40 28h36l-8-14-10 8-10-8Zm25 13h29l-7-12-8 7-7-7Z" fill="#b6a4ef" stroke="#9782e3" />
+        <path d="M39 91h12v15H39Zm57-18h13v16H96Zm66 26h10v13h-10Z" fill="#8fd9ff" />
+      </g>
+      <path d="M106 18V3m0 1 24 6-24 6M66 40V27m0 1 18 4-18 5" fill="none" stroke="#9e8ce8" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="m102 8 27 7-24 7Zm-38 25 20 5-18 5Z" fill="#ffe27a" />
+    </svg>
+  );
+}
+
+function HeroBirds() {
+  return (
+    <svg className="ew-hero-birds" viewBox="0 0 150 48" aria-hidden="true" focusable="false">
+      <path d="M5 31c6-8 12-8 18 0 6-8 12-8 18 0" fill="none" stroke="#e8fbff" strokeWidth="3.2" strokeLinecap="round" />
+      <path d="M68 15c4-5 8-5 12 0 4-5 8-5 12 0" fill="none" stroke="#f5feff" strokeWidth="2.6" strokeLinecap="round" opacity=".84" />
+      <path d="M119 34c3-4 7-4 10 0 3-4 7-4 10 0" fill="none" stroke="#e8fbff" strokeWidth="2.2" strokeLinecap="round" opacity=".7" />
+    </svg>
+  );
+}
+
+function EnglishHero() {
+  const heroRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const hero = heroRef.current;
+    if (!hero) return;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const finePointer = window.matchMedia("(pointer: fine)");
+    let frameId: number | null = null;
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+    let lastTime = 0;
+
+    const writeParallax = () => {
+      hero.style.setProperty("--ew-sky-x", `${(currentX * 8).toFixed(2)}px`);
+      hero.style.setProperty("--ew-sky-y", `${(currentY * 5).toFixed(2)}px`);
+      hero.style.setProperty("--ew-copy-x", `${(currentX * 2.5).toFixed(2)}px`);
+      hero.style.setProperty("--ew-copy-y", `${(currentY * 1.5).toFixed(2)}px`);
+      hero.style.setProperty("--ew-mascot-x", `${(currentX * 5).toFixed(2)}px`);
+      hero.style.setProperty("--ew-mascot-y", `${(currentY * 3).toFixed(2)}px`);
+      hero.style.setProperty("--ew-island-x", `${(currentX * 10).toFixed(2)}px`);
+      hero.style.setProperty("--ew-island-y", `${(currentY * 6).toFixed(2)}px`);
+    };
+
+    const settle = () => {
+      currentX = targetX;
+      currentY = targetY;
+      writeParallax();
+      frameId = null;
+    };
+
+    const tick = (time: number) => {
+      const elapsed = Math.min(48, time - lastTime || 16);
+      lastTime = time;
+      const ease = 1 - Math.exp(-elapsed / 85);
+      currentX += (targetX - currentX) * ease;
+      currentY += (targetY - currentY) * ease;
+
+      if (Math.abs(targetX - currentX) < 0.002 && Math.abs(targetY - currentY) < 0.002) {
+        settle();
+        return;
+      }
+
+      writeParallax();
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    const requestFrame = () => {
+      if (frameId !== null) return;
+      lastTime = performance.now();
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    const canMove = () => !reducedMotion.matches && finePointer.matches && window.innerWidth > 760;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!canMove() || event.pointerType !== "mouse") return;
+      const bounds = hero.getBoundingClientRect();
+      targetX = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width - 0.5) * 2));
+      targetY = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height - 0.5) * 2));
+      requestFrame();
+    };
+
+    const handlePointerLeave = () => {
+      targetX = 0;
+      targetY = 0;
+      requestFrame();
+    };
+
+    const handlePreferenceChange = () => {
+      if (canMove()) return;
+      targetX = 0;
+      targetY = 0;
+      requestFrame();
+    };
+
+    writeParallax();
+    hero.addEventListener("pointermove", handlePointerMove);
+    hero.addEventListener("pointerleave", handlePointerLeave);
+    reducedMotion.addEventListener("change", handlePreferenceChange);
+    finePointer.addEventListener("change", handlePreferenceChange);
+
+    return () => {
+      hero.removeEventListener("pointermove", handlePointerMove);
+      hero.removeEventListener("pointerleave", handlePointerLeave);
+      reducedMotion.removeEventListener("change", handlePreferenceChange);
+      finePointer.removeEventListener("change", handlePreferenceChange);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  return (
+    <section ref={heroRef} className="ew-hero" aria-labelledby="english-world-title">
+      <div className="ew-hero-sky" aria-hidden="true">
+        <span className="ew-hero-sun" />
+        <span className="ew-hero-glow" />
+        <HeroBirds />
+        <DistantCastle className="ew-hero-castle--one" />
+        <DistantCastle className="ew-hero-castle--two" />
+        <span className="ew-cloud ew-cloud--one" /><span className="ew-cloud ew-cloud--two" /><span className="ew-cloud ew-cloud--three" /><span className="ew-cloud ew-cloud--four" />
+        <span className="ew-hero-particle ew-hero-particle--one" /><span className="ew-hero-particle ew-hero-particle--two" /><span className="ew-hero-particle ew-hero-particle--three" /><span className="ew-hero-particle ew-hero-particle--four" /><span className="ew-hero-particle ew-hero-particle--five" /><span className="ew-hero-particle ew-hero-particle--six" />
+        <span className="ew-hero-letter ew-hero-letter--one">A</span><span className="ew-hero-letter ew-hero-letter--two">b</span><span className="ew-hero-letter ew-hero-letter--three">C</span>
+        <span className="ew-hero-star ew-hero-star--one">✦</span><span className="ew-hero-star ew-hero-star--two">✧</span><span className="ew-hero-star ew-hero-star--three">✦</span><span className="ew-hero-star ew-hero-star--four">✧</span>
+        <span className="ew-hero-far-island ew-hero-far-island--one" /><span className="ew-hero-far-island ew-hero-far-island--two" /><span className="ew-hero-far-island ew-hero-far-island--three" />
+        <span className="ew-hero-cloudbank" />
+      </div>
+      <div className="ew-mascot-scene">
+        <span className="ew-mascot-bubble" aria-hidden="true"><b>Hi, explorer!</b><small>Ready for a word adventure?</small></span>
+        <ReaderMascot />
+        <span className="ew-mascot-spark ew-mascot-spark--one" aria-hidden="true">✦</span>
+        <span className="ew-mascot-spark ew-mascot-spark--two" aria-hidden="true">✧</span>
+      </div>
       <div className="ew-hero-copy">
         <p className="ew-hero-kicker"><span aria-hidden="true">✦</span> A little learning goes a long way <span aria-hidden="true">✦</span></p>
-        <h1 id="english-world-title">English <span>World</span></h1>
-        <p>Read, listen, speak, and play your way to wonderful new words.</p>
-        <button type="button" className="ew-button ew-button--gold ew-hero-cta" onClick={onStart}>
-          <span aria-hidden="true">🚀</span> Start learning <span aria-hidden="true">→</span>
-        </button>
+        <h1 id="english-world-title"><span className="ew-title-english">English</span> <span className="ew-title-world">World</span></h1>
+        <p className="ew-hero-description">Learn English through fun, interactive adventures!</p>
+        <div className="ew-hero-actions">
+          <Link href="#adventures" className="ew-button ew-button--gold ew-hero-cta"><span aria-hidden="true">✦</span> Start Learning <span aria-hidden="true">→</span></Link>
+          <Link href="#worlds" className="ew-hero-secondary">Explore all six worlds <span aria-hidden="true">↓</span></Link>
+        </div>
+        <ul className="ew-hero-facts" aria-label="English World highlights">
+          <li><span aria-hidden="true">✦</span><b>{englishCategories.length}</b> magical worlds</li>
+          <li><span aria-hidden="true">★</span><b>{totalEnglishActivities}</b> playful activities</li>
+          <li><span aria-hidden="true">Aa</span><b>Read · Listen · Speak</b></li>
+        </ul>
       </div>
       <div className="ew-island" aria-hidden="true">
+        <span className="ew-island-halo" />
         <div className="ew-island-model"><LearningZoneIsland kind="english" /></div>
-        <span className="ew-island-castle">🏰</span>
+        <FloatingLearningIsland />
+        <span className="ew-island-spark ew-island-spark--one">✦</span>
+        <span className="ew-island-spark ew-island-spark--two">✧</span>
       </div>
     </section>
   );
 }
 
-function CategoryList({ active, onSelect }: { active: EnglishCategoryId; onSelect: (id: EnglishCategoryId) => void }) {
-  return (
-    <nav className="ew-category-list" aria-label="English learning categories">
-      {englishCategories.map((category) => (
-        <button
-          type="button"
-          key={category.id}
-          className={`ew-category-link ew-category-link--${category.tone}${active === category.id ? " is-active" : ""}`}
-          aria-pressed={active === category.id}
-          onClick={() => onSelect(category.id)}
-        >
-          <span className="ew-category-icon" aria-hidden="true">{category.icon}</span>
-          <span className="ew-category-copy"><b>{category.shortTitle}</b><small>{category.subtitle}</small></span>
-          <span className="ew-category-arrow" aria-hidden="true">›</span>
-        </button>
-      ))}
-      <div className="ew-sidebar-note"><span aria-hidden="true">⭐</span><b>Small steps<br />Big dreams!</b><span className="ew-sidebar-note-book" aria-hidden="true">📚</span></div>
-    </nav>
-  );
-}
+function AdventureSidebar({
+  selected,
+  onSelect,
+  completed,
+  learnerLevel,
+  stars,
+  storageReady,
+}: {
+  selected: EnglishCategoryId;
+  onSelect: (category: EnglishCategoryId) => void;
+  completed: string[];
+  learnerLevel: number;
+  stars: number;
+  storageReady: boolean;
+}) {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-function ProgressSummary({ completed, stars, badges }: { completed: number; stars: number; badges: number }) {
-  return (
-    <section className="ew-progress-summary" aria-label="Your English progress">
-      <div className="ew-summary-item"><span className="ew-summary-icon ew-summary-icon--star" aria-hidden="true">⭐</span><span><b>{completed}</b><small>Completed activities</small></span></div>
-      <span className="ew-summary-divider" aria-hidden="true" />
-      <div className="ew-summary-item"><span className="ew-summary-icon ew-summary-icon--crown" aria-hidden="true">🏅</span><span><b>{stars}</b><small>Stars earned</small></span></div>
-      <span className="ew-summary-divider" aria-hidden="true" />
-      <div className="ew-summary-item"><span className="ew-summary-icon ew-summary-icon--badge" aria-hidden="true">🎖️</span><span><b>{badges}</b><small>Badges earned</small></span></div>
-    </section>
-  );
-}
-
-function ContinueCard({ activityId, onContinue, onStart }: { activityId: string | null; onContinue: () => void; onStart: () => void }) {
-  return (
-    <section className="ew-small-card ew-continue-card" aria-labelledby="ew-continue-title">
-      <div className="ew-card-heading"><span className="ew-card-icon ew-card-icon--continue" aria-hidden="true">🧭</span><div><p className="ew-eyebrow">Your learning trail</p><h2 id="ew-continue-title">Continue learning</h2></div></div>
-      {activityId ? <><p className="ew-card-mainline">Pick up with <b>{activityTitle(activityId)}</b></p><button className="ew-text-button" type="button" onClick={onContinue}>Continue <span aria-hidden="true">→</span></button></> : <><p className="ew-card-mainline">Your next adventure is waiting.</p><button className="ew-text-button" type="button" onClick={onStart}>Choose an activity <span aria-hidden="true">→</span></button></>}
-    </section>
-  );
-}
-
-function DailyChallenge({ targetTitle, subtitle, complete, onStart }: { targetTitle: string; subtitle: string; complete: boolean; onStart: () => void }) {
-  return (
-    <section className={`ew-small-card ew-daily-card${complete ? " is-complete" : ""}`} aria-labelledby="ew-daily-title">
-      <div className="ew-card-heading"><span className="ew-card-icon ew-card-icon--daily" aria-hidden="true">🌟</span><div><p className="ew-eyebrow">Today&apos;s little quest</p><h2 id="ew-daily-title">Daily challenge</h2></div><span className="ew-daily-stamp" aria-label={complete ? "Complete" : "New challenge"}>{complete ? "✓" : "1"}</span></div>
-      <p className="ew-card-mainline"><b>{complete ? "Challenge complete!" : targetTitle}</b></p>
-      <p className="ew-card-subline">{complete ? "You earned today’s challenge star. Come back tomorrow for a new quest." : subtitle}</p>
-      {!complete && <button className="ew-text-button" type="button" onClick={onStart}>Start today&apos;s challenge <span aria-hidden="true">→</span></button>}
-    </section>
-  );
-}
-
-function FeaturedCategory({ category, completed, onStart }: { category: (typeof englishCategories)[number]; completed: number; onStart: () => void }) {
-  const categoryCopy: Record<EnglishCategoryId, string> = {
-    vocabulary: "Meet bright new words, discover what they mean, and try a picture-word match.",
-    stories: "Visit story land for short reads, helpful vocabulary, and a little question at the end.",
-    grammar: "See how words work together, then try friendly grammar questions and word games.",
-    listening: "Listen to a sentence as many times as you like, then choose what you heard.",
-    speaking: "Hear a practice phrase and say it aloud. Your browser will tell you if voice tools are available.",
-    sentences: "Move word tiles into place to make a clear sentence. Tap or drag to build it.",
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") nextIndex = (index + 1) % englishCategories.length;
+    if (event.key === "ArrowUp" || event.key === "ArrowLeft") nextIndex = (index - 1 + englishCategories.length) % englishCategories.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = englishCategories.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    onSelect(englishCategories[nextIndex].id);
+    tabRefs.current[nextIndex]?.focus();
   };
+
   return (
-    <section className={`ew-featured ew-featured--${category.tone}`} aria-labelledby="ew-feature-title">
-      <div className="ew-feature-art" aria-hidden="true"><span className="ew-feature-glow" /><span className="ew-feature-art-icon">{category.icon}</span><span className="ew-feature-art-spark ew-feature-art-spark--one">✦</span><span className="ew-feature-art-spark ew-feature-art-spark--two">✧</span><span className="ew-feature-art-letters">Aa</span></div>
-      <div className="ew-feature-copy"><span className="ew-level-pill">{completed ? `${completed} ${completed === 1 ? "activity" : "activities"} completed` : "Ready for you"}</span><h2 id="ew-feature-title">{category.title}</h2><p>{categoryCopy[category.id]}</p><button type="button" className="ew-button ew-button--gold" onClick={onStart}>Start activity <span aria-hidden="true">→</span></button></div>
-      <span className="ew-feature-cloud" aria-hidden="true">☁</span>
+    <aside className="ew-adventure-sidebar" aria-label="English learning adventures">
+      <div className="ew-sidebar-heading">
+        <p className="ew-sidebar-kicker"><span aria-hidden="true">✦</span> Learning adventures</p>
+        <span className="ew-sidebar-count">{englishCategories.length} worlds</span>
+      </div>
+      <div className="ew-adventure-tabs" role="tablist" aria-label="Choose an adventure">
+        {englishCategories.map((category, index) => {
+          const categoryCompleted = categoryCompletionCount(category.id, completed);
+          const isSelected = category.id === selected;
+          return (
+            <button
+              key={category.id}
+              ref={(element) => { tabRefs.current[index] = element; }}
+              type="button"
+              role="tab"
+              id={`ew-adventure-tab-${category.id}`}
+              aria-selected={isSelected}
+              aria-controls="ew-selected-adventure"
+              tabIndex={isSelected ? 0 : -1}
+              className={`ew-adventure-tab ew-adventure-tab--${category.tone}${isSelected ? " is-selected" : ""}`}
+              style={{ "--tab-index": index } as React.CSSProperties}
+              onClick={() => onSelect(category.id)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
+            >
+              <span className="ew-adventure-tab-icon" aria-hidden="true"><AdventureGlyph category={category.id} /></span>
+              <span className="ew-adventure-tab-copy">
+                <strong>{category.shortTitle}</strong>
+                <small>{category.subtitle}</small>
+              </span>
+              {categoryCompleted > 0 && (
+                <span className="ew-adventure-tab-done" title={`${categoryCompleted} completed activit${categoryCompleted === 1 ? "y" : "ies"}`} aria-label={`${categoryCompleted} completed`}>
+                  {categoryCompleted > 99 ? "99+" : categoryCompleted}
+                </span>
+              )}
+              <span className="ew-adventure-tab-arrow" aria-hidden="true">→</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="ew-sidebar-note">
+        <span className="ew-sidebar-note-star" aria-hidden="true">★</span>
+        <p>
+          <small>Your explorer level</small>
+          <strong>{storageReady ? `Level ${learnerLevel}` : "Loading…"}</strong>
+          <span>{storageReady ? `${stars} ${stars === 1 ? "star" : "stars"} collected` : "Reading saved progress"}</span>
+        </p>
+        <svg className="ew-sidebar-note-book" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+          <path d="M10 20c9-5 16-4 22 2v29c-6-6-13-7-22-3Z" fill="#fff8e8" stroke="#fff" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M32 22c7-6 15-7 23-2v28c-9-4-16-3-23 3Z" fill="#bda6ff" stroke="#fff" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M32 22v29M17 28c4-1 7 0 10 2m-10 5c4-1 7 0 10 2m10-9c3-2 6-3 10-2m-10 7c3-2 6-3 10-2" fill="none" stroke="#7d68cf" strokeWidth="2" strokeLinecap="round" opacity=".62" />
+          <path d="m46 7 2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#ffdb62" stroke="#fff8ce" strokeWidth="1.2" />
+        </svg>
+      </div>
+      <p className="ew-sidebar-caption" aria-hidden="true">Pick a world. Every tiny lesson adds a star.</p>
+    </aside>
+  );
+}
+
+function EnglishDashboard({
+  progress,
+  storageReady,
+  todayTarget,
+  dailyComplete,
+  badges,
+  stars,
+}: {
+  progress: ProgressRecord;
+  storageReady: boolean;
+  todayTarget: (typeof dailyChallengeTargets)[number] | null;
+  dailyComplete: boolean;
+  badges: number;
+  stars: number;
+}) {
+  const [selectedAdventure, setSelectedAdventure] = useState<EnglishCategoryId | null>(null);
+  const resolvedAdventure = selectedAdventure ?? activityCategory(progress.lastActivityId) ?? "vocabulary";
+  const category = englishCategories.find((item) => item.id === resolvedAdventure) ?? englishCategories[0];
+  const topics = useMemo(() => topicsForCategory(category.id), [category.id]);
+  const [showAllVocabularyTopics, setShowAllVocabularyTopics] = useState(false);
+  const visibleTopics = category.id === "vocabulary" && !showAllVocabularyTopics ? topics.slice(0, 10) : topics;
+  const completedCount = categoryCompletionCount(category.id, progress.completed);
+  const totalCount = categoryActivityTotal(category.id);
+  const progressPercent = Math.round((completedCount / totalCount) * 100);
+  const learnerLevel = badges + 1;
+  const adventureNumber = englishCategories.findIndex((item) => item.id === category.id) + 1;
+
+  const selectAdventure = (categoryId: EnglishCategoryId) => {
+    setSelectedAdventure(categoryId);
+  };
+
+  return (
+    <section className="ew-learning-dashboard" id="adventures" aria-labelledby="ew-dashboard-title">
+      <div className="ew-dashboard-magic" aria-hidden="true">
+        <span className="ew-dash-orb ew-dash-orb--one" />
+        <span className="ew-dash-orb ew-dash-orb--two" />
+        <span className="ew-dash-spark ew-dash-spark--one">✦</span>
+        <span className="ew-dash-spark ew-dash-spark--two">✧</span>
+        <span className="ew-dash-spark ew-dash-spark--three">✦</span>
+        <span className="ew-dash-spark ew-dash-spark--four">✧</span>
+        <span className="ew-dash-spark ew-dash-spark--five">✦</span>
+      </div>
+      <div className="ew-dashboard-grid">
+        <AdventureSidebar
+          selected={category.id}
+          onSelect={selectAdventure}
+          completed={progress.completed}
+          learnerLevel={learnerLevel}
+          stars={stars}
+          storageReady={storageReady}
+        />
+
+        <div key={category.id} className="ew-dashboard-content" id="ew-selected-adventure" role="tabpanel" aria-labelledby={`ew-adventure-tab-${category.id}`}>
+          <header className="ew-dash-heading">
+            <div className="ew-dash-heading-main">
+              <span className={`ew-dash-crest ew-dash-crest--${category.tone}`} aria-hidden="true">
+                <AdventureGlyph category={category.id} />
+              </span>
+              <div className="ew-dash-copy">
+                <p className="ew-section-kicker"><span aria-hidden="true">✦</span> Adventure {adventureNumber} of {englishCategories.length} <span aria-hidden="true">✦</span></p>
+                <div className="ew-dash-title-row">
+                  <h2 id="ew-dashboard-title">{category.title}</h2>
+                  <span className="ew-dash-level">{category.level}</span>
+                </div>
+                <p className="ew-dash-description">{categoryDescriptions[category.id]}</p>
+                <div className="ew-dash-meter">
+                  <ProgressBar
+                    value={progressPercent}
+                    label={storageReady ? `${completedCount} of ${totalCount} activities complete` : "Loading saved progress…"}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="ew-dash-stats" aria-label="Progress summary">
+              <div className="ew-dash-stat">
+                <span className="ew-dash-stat-icon" aria-hidden="true">✓</span>
+                <span><b>{storageReady ? `${completedCount}/${totalCount}` : "…"}</b><small>Activities done</small></span>
+              </div>
+              <div className="ew-dash-stat">
+                <span className="ew-dash-stat-icon ew-dash-stat-icon--badge" aria-hidden="true">★</span>
+                <span><b>{storageReady ? `Level ${learnerLevel}` : "…"}</b><small>{storageReady ? `${badges} ${badges === 1 ? "badge" : "badges"} earned` : "Loading progress"}</small></span>
+              </div>
+              <div className="ew-dash-stat">
+                <span className="ew-dash-stat-icon ew-dash-stat-icon--star" aria-hidden="true">✦</span>
+                <span><b>{storageReady ? stars : "…"}</b><small>Stars collected</small></span>
+              </div>
+            </div>
+          </header>
+
+          <section className={`ew-feature-banner ew-feature-banner--${category.tone}`} aria-labelledby="ew-feature-title">
+            <div className="ew-feature-copy">
+              <span className="ew-feature-eyebrow"><span aria-hidden="true">✦</span> Featured adventure</span>
+              <h3 id="ew-feature-title">{category.title}</h3>
+              <p>{categoryDescriptions[category.id]}</p>
+              <ul className="ew-feature-facts">
+                <li><b>{topics.length}</b> topics</li>
+                <li><b>{completedCount}</b> of {totalCount} done</li>
+                <li><b>{category.level}</b></li>
+              </ul>
+              <div className="ew-feature-actions">
+                <Link
+                  href={`/english/${category.id}`}
+                  className="ew-button ew-button--gold ew-feature-start"
+                  aria-label={`Start ${category.title} in a new tab`}
+                  {...OPEN_IN_NEW_TAB}
+                >
+                  Start Lesson <span aria-hidden="true">→</span>
+                </Link>
+                <Link href="#ew-topics" className="ew-feature-topics">See all {topics.length} topics <span aria-hidden="true">↓</span></Link>
+              </div>
+            </div>
+            <div className="ew-feature-art" aria-hidden="true">
+              <span className="ew-feature-crest"><AdventureGlyph category={category.id} /></span>
+              <div className="ew-feature-art-frame"><AdventureIllustration category={category.id} /></div>
+              <span className="ew-feature-spark ew-feature-spark--one">✦</span>
+              <span className="ew-feature-spark ew-feature-spark--two">✧</span>
+              <span className="ew-feature-letters">Aa</span>
+              <span className="ew-feature-word ew-feature-word--one">{featureWords[category.id][0]}</span>
+              <span className="ew-feature-word ew-feature-word--two">{featureWords[category.id][1]}</span>
+            </div>
+            <span className="ew-feature-shine" aria-hidden="true" />
+          </section>
+
+          <div className="ew-topic-heading" id="ew-topics">
+            <div>
+              <p className="ew-section-kicker"><span aria-hidden="true">✦</span> Pick a topic <span aria-hidden="true">✦</span></p>
+              <h3>Where will you begin?</h3>
+            </div>
+            <Link
+              href={`/english/${category.id}`}
+              className="ew-topic-all"
+              aria-label={`Open the full ${category.title} in a new tab`}
+              {...OPEN_IN_NEW_TAB}
+            >
+              Open full adventure <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+
+          <div id={category.id === "vocabulary" ? "ew-vocabulary-topic-list" : undefined} className={`ew-topic-grid ew-topic-grid--${category.tone}${showAllVocabularyTopics && category.id === "vocabulary" ? " is-expanded" : ""}`} aria-label={`${category.shortTitle} topics`}>
+            {visibleTopics.map((topic, index) => {
+              const topicIds = topicActivityIds(category.id, topic.activityId);
+              const topicDone = topicIds.filter((id) => progress.completed.includes(id)).length;
+              const isDone = topicDone === topicIds.length;
+              const topicPercent = Math.round((topicDone / topicIds.length) * 100);
+              return (
+                <Link
+                  key={topic.activityId}
+                  href={activityUrl(topic.activityId)}
+                  className={`ew-topic-card ew-topic-card--${category.tone}${isDone ? " is-done" : ""}`}
+                  style={{ "--topic-index": index } as React.CSSProperties}
+                  aria-label={`${topic.title} — ${isDone ? "practise again" : topicDone > 0 ? "continue" : "start"} in a new tab`}
+                  {...OPEN_IN_NEW_TAB}
+                >
+                  <span className="ew-topic-card-star" aria-hidden="true">✦</span>
+                  <span className="ew-topic-icon" aria-hidden="true">
+                    <TopicIllustration category={category.id} index={index} />
+                    <span className="ew-topic-number">{String(index + 1).padStart(2, "0")}</span>
+                  </span>
+                  <span className="ew-topic-tag">{isDone ? "Completed" : topic.tag}</span>
+                  <strong>{topic.title}</strong>
+                  <small>{topic.description}</small>
+                  <span className="ew-topic-meter">
+                    <span className="ew-topic-meter-track" aria-hidden="true"><span style={{ width: `${topicPercent}%` }} /></span>
+                    <small>{topicDone}/{topicIds.length} done</small>
+                  </span>
+                  <span className="ew-topic-start">{isDone ? "Practise again" : topicDone > 0 ? "Continue" : "Start"} <span aria-hidden="true">→</span></span>
+                </Link>
+              );
+            })}
+          </div>
+          {category.id === "vocabulary" && topics.length > 10 && (
+            <div className="ew-topic-expander">
+              <p>{showAllVocabularyTopics ? `Showing all ${topics.length} vocabulary topics` : `Showing 10 of ${topics.length} vocabulary topics`}</p>
+              <button type="button" className="ew-topic-expand-button" aria-expanded={showAllVocabularyTopics} aria-controls="ew-vocabulary-topic-list" onClick={() => setShowAllVocabularyTopics((shown) => !shown)}>
+                {showAllVocabularyTopics ? "Show Less" : `View All Topics (${topics.length})`} <span aria-hidden="true">{showAllVocabularyTopics ? "↑" : "↓"}</span>
+              </button>
+            </div>
+          )}
+
+          <LandingJourney progress={progress} target={todayTarget} dailyComplete={dailyComplete} />
+        </div>
+      </div>
     </section>
   );
 }
 
-function CategoryGrid({ active, onSelect }: { active: EnglishCategoryId; onSelect: (id: EnglishCategoryId) => void }) {
+function AdventureWorlds({ progress, storageReady }: { progress: ProgressRecord; storageReady: boolean }) {
   return (
-    <section className="ew-category-grid" aria-label="Choose an English activity">
-      {englishCategories.map((category) => (
-        <button type="button" key={category.id} className={`ew-category-card ew-category-card--${category.tone}${active === category.id ? " is-active" : ""}`} onClick={() => onSelect(category.id)}>
-          <span className="ew-category-card-star" aria-hidden="true">✦</span><span className="ew-category-card-art" aria-hidden="true">{category.icon}</span><b>{category.title}</b><small>{category.subtitle}</small><span className="ew-card-start">Explore <span aria-hidden="true">→</span></span>
-        </button>
-      ))}
+    <section className="ew-worlds-section" id="worlds" aria-labelledby="ew-worlds-title">
+      <div className="ew-worlds-heading">
+        <p className="ew-section-kicker"><span aria-hidden="true">✦</span> The whole world map <span aria-hidden="true">✦</span></p>
+        <h2 id="ew-worlds-title">Six worlds. One big adventure.</h2>
+        <p>Every world has its own story, friendly challenges, and little wins. Pick a door and peek inside.</p>
+      </div>
+      <div className="ew-world-grid">
+        {englishCategories.map((world, index) => {
+          const completed = categoryCompletionCount(world.id, progress.completed);
+          const total = categoryActivityTotal(world.id);
+          const percent = Math.round((completed / total) * 100);
+          const worldNumber = String(index + 1).padStart(2, "0");
+
+          return (
+            <Link
+              key={world.id}
+              href={`/english/${world.id}`}
+              className={`ew-world-card ew-world-card--${world.tone}`}
+              style={{ "--world-index": index } as React.CSSProperties}
+              aria-label={`Open ${world.title} in a new tab`}
+              {...OPEN_IN_NEW_TAB}
+            >
+              <span className="ew-world-art" aria-hidden="true">
+                <span className="ew-world-art-glow" />
+                <span className="ew-world-art-frame"><AdventureIllustration category={world.id} /></span>
+                <span className="ew-world-crest"><AdventureGlyph category={world.id} /></span>
+                <span className="ew-world-index">World {worldNumber}</span>
+                <span className="ew-world-art-spark ew-world-art-spark--one">✦</span>
+                <span className="ew-world-art-spark ew-world-art-spark--two">✧</span>
+              </span>
+              <span className="ew-world-copy">
+                <span className="ew-world-meta">
+                  <span>{world.level}</span>
+                  <span>{storageReady ? `${completed}/${total} done` : "Reading progress…"}</span>
+                </span>
+                <strong className="ew-world-title">{world.title}</strong>
+                <span className="ew-world-description">{categoryDescriptions[world.id]}</span>
+                <span className="ew-world-meter">
+                  <span className="ew-world-meter-track" aria-hidden="true"><span style={{ width: `${percent}%` }} /></span>
+                  <small>{storageReady ? `${percent}% complete` : "Loading progress"}</small>
+                </span>
+                <span className="ew-world-action">
+                  Start Adventure <span aria-hidden="true">→</span>
+                </span>
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+      <p className="ew-worlds-note"><span aria-hidden="true">✦</span> Each card opens in a new tab, so your world map stays right here.</p>
     </section>
+  );
+}
+
+function activityCategory(id: string | null): EnglishCategoryId | null {
+  if (!id) return null;
+  if (id.startsWith("vocabulary-") || id.startsWith("match-") || id.startsWith("spelling-")) return "vocabulary";
+  if (id.startsWith("story-")) return "stories";
+  if (id.startsWith("grammar-")) return "grammar";
+  if (id.startsWith("listening-")) return "listening";
+  if (id.startsWith("speaking-")) return "speaking";
+  if (id.startsWith("sentence-")) return "sentences";
+  return null;
+}
+
+function activityUrl(id: string) {
+  const category = activityCategory(id);
+  return `/english/${category ?? "vocabulary"}?activity=${encodeURIComponent(id)}`;
+}
+
+function LandingJourney({ progress, target, dailyComplete }: { progress: ProgressRecord; target: (typeof dailyChallengeTargets)[number] | null; dailyComplete: boolean }) {
+  return (
+    <div className="ew-journey-rail">
+      {progress.lastActivityId ? (
+        <Link className="ew-journey-chip ew-journey-chip--continue" href={activityUrl(progress.lastActivityId)} aria-label="Continue your last activity in a new tab" {...OPEN_IN_NEW_TAB}>
+          <span className="ew-journey-icon" aria-hidden="true">↗</span><span><small>Continue your trail</small><strong>{activityTitle(progress.lastActivityId)}</strong></span><span className="ew-journey-action">Continue →</span>
+        </Link>
+      ) : (
+        <p className="ew-first-step"><span className="ew-journey-icon" aria-hidden="true">✦</span><span><small>New explorer?</small><strong>Your first star is waiting in any adventure.</strong></span></p>
+      )}
+      {target ? (
+        <Link className={`ew-journey-chip ew-journey-chip--daily${dailyComplete ? " is-complete" : ""}`} href={activityUrl(target.activityId)} aria-label={`${dailyComplete ? "Review" : "Try"} today's quest in a new tab`} {...OPEN_IN_NEW_TAB}>
+          <span className="ew-journey-icon" aria-hidden="true">{dailyComplete ? "✓" : "★"}</span><span><small>Today&apos;s little quest</small><strong>{dailyComplete ? "Challenge complete!" : target.title}</strong></span><span className="ew-journey-action">{dailyComplete ? "Review →" : "Try it →"}</span>
+        </Link>
+      ) : (
+        <p className="ew-journey-chip ew-journey-chip--daily is-loading"><span className="ew-journey-icon" aria-hidden="true">★</span><span><small>Today&apos;s little quest</small><strong>Choosing your next quest…</strong></span></p>
+      )}
+    </div>
   );
 }
 
 function VocabularyActivity({
   activeSet, onSet, wordIndex, onWordIndex, revealed, onReveal, onComplete, onStart,
-  mode, onMode,
+  mode, onMode, speak, reviewWordIds, onReviewWord, onClearReview,
 }: {
   activeSet: number; onSet: (index: number) => void; wordIndex: number; onWordIndex: (index: number) => void;
   revealed: boolean; onReveal: () => void; onComplete: (id: string) => void; onStart: (id: string) => void;
   mode: "cards" | "match" | "spelling"; onMode: (mode: "cards" | "match" | "spelling") => void;
+  speak: (text: string) => void;
+  reviewWordIds: string[]; onReviewWord: (id: string) => void; onClearReview: (id: string) => void;
 }) {
   const set = wordSets[activeSet];
-  const [matched, setMatched] = useState<string[]>([]);
-  const [reviewed, setReviewed] = useState<string[]>([]);
+  const [matchedBySet, setMatchedBySet] = useState<Record<string, string[]>>({});
+  const [reviewedBySet, setReviewedBySet] = useState<Record<string, string[]>>({});
+  const [reviewBatch, setReviewBatch] = useState(0);
+  const matched = matchedBySet[set.id] ?? [];
+  const reviewed = reviewedBySet[set.id] ?? [];
+  const [matchBatch, setMatchBatch] = useState(0);
   const [selectedPicture, setSelectedPicture] = useState<string | null>(null);
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [matchFeedback, setMatchFeedback] = useState("");
-  const [spellingIndex, setSpellingIndex] = useState(0);
-  const [spellingLetters, setSpellingLetters] = useState<number[]>([]);
-  const [spellingFeedback, setSpellingFeedback] = useState("");
+  const [spellingBySet, setSpellingBySet] = useState<Record<string, { index: number; letters: number[]; feedback: string }>>({});
+  const spellingState = spellingBySet[set.id] ?? { index: 0, letters: [], feedback: "" };
+  const { index: spellingIndex, letters: spellingLetters, feedback: spellingFeedback } = spellingState;
+  const updateSpelling = (update: Partial<typeof spellingState>) => setSpellingBySet((current) => ({ ...current, [set.id]: { ...spellingState, ...update } }));
   const [showHint, setShowHint] = useState(false);
   const [wordFeedback, setWordFeedback] = useState("");
   const word = set.words[wordIndex];
   const spellingWord = set.words[spellingIndex];
+  const batchStart = Math.floor(wordIndex / 10) * 10;
+  const wordBatch = set.words.slice(batchStart, batchStart + 10);
+  const matchStart = matchBatch * 10;
+  const matchWords = set.words.slice(matchStart, matchStart + 10);
+  const batchCount = Math.ceil(set.words.length / 10);
+  const reviewPageCount = Math.ceil(reviewWordIds.length / 10);
+  const reviewPage = Math.min(reviewBatch, Math.max(0, reviewPageCount - 1));
+  const reviewBatchWords = reviewWordIds.slice(reviewPage * 10, reviewPage * 10 + 10);
+  const changeMatchBatch = (nextBatch: number) => { setMatchBatch(nextBatch); setSelectedPicture(null); setSelectedWord(null); setMatchFeedback(""); };
 
   const chooseMatchPicture = (id: string) => {
     if (matched.includes(id)) return;
@@ -277,12 +881,14 @@ function VocabularyActivity({
     if (!candidate) return;
     if (candidate === id) {
       const next = [...matched, id];
-      setMatched(next);
+      setMatchedBySet((current) => ({ ...current, [set.id]: next }));
       setSelectedWord(null);
       setSelectedPicture(null);
       setMatchFeedback("A lovely match!");
       if (next.length === set.words.length) onComplete(`match-${set.id}`);
     } else {
+      onReviewWord(id);
+      onReviewWord(candidate);
       setMatchFeedback("Those two do not match yet. Try another word.");
       setSelectedWord(null);
       setSelectedPicture(null);
@@ -295,28 +901,27 @@ function VocabularyActivity({
     if (!selectedPicture) return;
     if (selectedPicture === id) {
       const next = [...matched, id];
-      setMatched(next);
+      setMatchedBySet((current) => ({ ...current, [set.id]: next }));
       setSelectedWord(null);
       setSelectedPicture(null);
       setMatchFeedback("A lovely match!");
       if (next.length === set.words.length) onComplete(`match-${set.id}`);
     } else {
+      onReviewWord(id);
+      onReviewWord(selectedPicture);
       setMatchFeedback("Those two do not match yet. Try another word.");
       setSelectedWord(null);
       setSelectedPicture(null);
     }
   };
 
-  const spellingBank = useMemo(() => {
-    const letters = Array.from(spellingWord.word.toLocaleUpperCase());
-    return letters.map((letter, index) => ({ letter, index })).reverse();
-  }, [spellingWord.word]);
+  const spellingBank = useMemo(() => createSpellingTiles(spellingWord.word), [spellingWord.word]);
   const chosenSpelling = spellingLetters.map((sourceIndex) => Array.from(spellingWord.word.toLocaleUpperCase())[sourceIndex]).join("");
   const checkSpelling = () => {
     if (chosenSpelling === spellingWord.word.toLocaleUpperCase()) {
-      setSpellingFeedback("That's the word! Great spelling.");
+      updateSpelling({ feedback: "That's the word! Great spelling." });
       if (spellingIndex === set.words.length - 1) onComplete(`spelling-${set.id}`);
-    } else setSpellingFeedback("Not quite yet. Look at the letters and try again.");
+    } else { onReviewWord(spellingWord.id); updateSpelling({ feedback: "Not quite yet. Look at the letters and try again." }); }
   };
 
   return (
@@ -327,30 +932,36 @@ function VocabularyActivity({
         <button type="button" aria-pressed={mode === "spelling"} className={mode === "spelling" ? "is-active" : ""} onClick={() => onMode("spelling")}>Spelling puzzle</button>
       </div>
       {mode === "cards" && <>
-        <div className="ew-chip-row" aria-label="Word categories">{wordSets.map((item, index) => <button type="button" key={item.id} className={`ew-chip${activeSet === index ? " is-active" : ""}`} aria-pressed={activeSet === index} onClick={() => { onSet(index); onWordIndex(0); onStart(`vocabulary-${item.id}`); }}>{item.icon} {item.label}</button>)}</div>
+        {reviewWordIds.length > 0 && <section className="ew-review-panel" aria-label="Words to practise again"><div className="ew-review-heading"><div><p className="ew-eyebrow">Your saved review shelf · {reviewWordIds.length} words</p><h3>Let&apos;s practise these again</h3></div><div className="ew-review-paging"><button type="button" className="ew-button ew-button--light" disabled={reviewPage === 0} onClick={() => setReviewBatch((page) => Math.max(0, page - 1))}>Previous 10</button><span>{reviewPage + 1} / {reviewPageCount}</span><button type="button" className="ew-button ew-button--light" disabled={reviewPage + 1 >= reviewPageCount} onClick={() => setReviewBatch((page) => Math.min(reviewPageCount - 1, page + 1))}>Next 10</button></div></div><div className="ew-review-words">{reviewBatchWords.map((id) => { const reviewWord = wordSets.flatMap((item) => item.words).find((item) => item.id === id); return reviewWord ? <article className="ew-review-word" key={id}><VocabularyPicture word={reviewWord} /><b>{reviewWord.word}</b><small>{reviewWord.meaning}</small><div className="ew-button-row"><button type="button" className="ew-button ew-button--light" onClick={() => speak(reviewWord.word)}>Hear it</button><button type="button" className="ew-button ew-button--blue" onClick={() => onClearReview(id)}>I know it now</button></div></article> : null; })}</div></section>}
+        <div className="ew-chip-row" aria-label="Word categories">{wordSets.map((item, index) => <button type="button" key={item.id} className={`ew-chip${activeSet === index ? " is-active" : ""}`} aria-pressed={activeSet === index} onClick={() => { onSet(index); onWordIndex(0); setMatchBatch(0); setSelectedPicture(null); setSelectedWord(null); setMatchFeedback(""); onStart(`vocabulary-${item.id}`); }}>{item.icon} {item.label}</button>)}</div>
+        <div className="ew-batch-navigation"><button type="button" className="ew-button ew-button--light" disabled={batchStart === 0} onClick={() => onWordIndex(Math.max(0, batchStart - 10))}>← Previous 10</button><span>Words {batchStart + 1}–{Math.min(batchStart + 10, set.words.length)} of {set.words.length}</span><button type="button" className="ew-button ew-button--light" disabled={batchStart + 10 >= set.words.length} onClick={() => onWordIndex(Math.min(batchStart + 10, set.words.length - 1))}>Next 10 →</button></div>
+        <div key={batchStart} className="ew-word-picker" aria-label={`Words ${batchStart + 1} to ${Math.min(batchStart + 10, set.words.length)}`}>
+          {wordBatch.map((item, offset) => { const index = batchStart + offset; return <button type="button" key={item.id} className={`${wordIndex === index ? "is-active" : ""}${reviewed.includes(item.id) ? " is-learned" : ""}`} aria-pressed={wordIndex === index} onClick={() => { onWordIndex(index); setWordFeedback(""); }}><VocabularyPicture word={item} /><b>{item.word}</b>{reviewed.includes(item.id) && <small>✓</small>}</button>; })}
+        </div>
         <article className="ew-word-card">
-          <div className="ew-word-picture" aria-label={`${word.word} picture`}><span aria-hidden="true">{word.picture}</span><small>{set.label}</small></div>
-          <div className="ew-word-copy"><p className="ew-eyebrow">Word {wordIndex + 1} of {set.words.length}</p><h3>{word.word}</h3><p className="ew-word-example"><b>Example:</b> {word.sentence}</p>{revealed && <p className="ew-definition"><b>It means:</b> {word.meaning}</p>}
-            <div className="ew-button-row"><button type="button" className="ew-button ew-button--light" onClick={onReveal}>{revealed ? "Hide meaning" : "Reveal meaning"}</button><button type="button" className="ew-button ew-button--blue" onClick={() => { const nextReviewed = [...new Set([...reviewed, word.id])]; setReviewed(nextReviewed); setWordFeedback(""); if (wordIndex === set.words.length - 1) { if (nextReviewed.length === set.words.length) onComplete(`vocabulary-${set.id}`); else setWordFeedback("Go back and tap Got it on each word to finish this set."); } else onWordIndex(wordIndex + 1); }}>Got it <span aria-hidden="true">→</span></button></div>
+          <div className="ew-word-picture" key={word.id} aria-label={`${word.word} picture`}><VocabularyPicture word={word} /><small>{set.label}</small></div>
+          <div className="ew-word-copy"><p className="ew-eyebrow">Word {wordIndex + 1} of {set.words.length}</p><h3>{word.word}</h3>{word.topic && <p className="ew-eyebrow">{word.topic} · {word.level}</p>}<p className="ew-word-example"><b>Example:</b> {word.sentence}</p>{revealed && <p className="ew-definition"><b>It means:</b> {word.meaning}</p>}
+            <div className="ew-button-row"><button type="button" className="ew-button ew-button--light" onClick={() => speak(word.pronunciation ?? word.word)}>🔊 Hear word</button><button type="button" className="ew-button ew-button--light" onClick={onReveal}>{revealed ? "Hide meaning" : "Reveal meaning"}</button><button type="button" className="ew-button ew-button--blue" onClick={() => { const nextReviewed = [...new Set([...reviewed, word.id])]; setReviewedBySet((current) => ({ ...current, [set.id]: nextReviewed })); setWordFeedback(""); if (wordIndex === set.words.length - 1) { if (nextReviewed.length === set.words.length) onComplete(`vocabulary-${set.id}`); else setWordFeedback("Go back and tap Got it on each word to finish this set."); } else onWordIndex(wordIndex + 1); }}>Got it <span aria-hidden="true">→</span></button></div>
           </div>
         </article>
         <ProgressBar value={Math.round((reviewed.length / set.words.length) * 100)} label={`${reviewed.length} of ${set.words.length} words marked Got it`} />
-        <div className="ew-step-controls"><button type="button" className="ew-button ew-button--light" disabled={wordIndex === 0} onClick={() => onWordIndex(wordIndex - 1)}>← Previous</button><span>{wordIndex + 1} / {set.words.length}</span><button type="button" className="ew-button ew-button--light" disabled={wordIndex === set.words.length - 1} onClick={() => onWordIndex(wordIndex + 1)}>Next →</button></div>
+        <p className="ew-word-page-note">Showing a small set of words at a time keeps practice easy to follow. Choose a word above to revisit it.</p>
         {wordFeedback && <FeedbackMessage tone="try">{wordFeedback}</FeedbackMessage>}
-      {wordIndex === set.words.length - 1 && <button type="button" className="ew-reset-link" onClick={() => { onWordIndex(0); setReviewed([]); setWordFeedback(""); if (revealed) onReveal(); }}>Practice again from the first word</button>}
+      {wordIndex === set.words.length - 1 && <button type="button" className="ew-reset-link" onClick={() => { onWordIndex(0); setReviewedBySet((current) => ({ ...current, [set.id]: [] })); setWordFeedback(""); if (revealed) onReveal(); }}>Practice again from the first word</button>}
       </>}
       {mode === "match" && <>
+        <div className="ew-batch-navigation"><button type="button" className="ew-button ew-button--light" disabled={matchBatch === 0} onClick={() => changeMatchBatch(Math.max(0, matchBatch - 1))}>← Previous 10</button><span>Choices {matchStart + 1}–{Math.min(matchStart + 10, set.words.length)} of {set.words.length} · group {matchBatch + 1} of {batchCount}</span><button type="button" className="ew-button ew-button--light" disabled={matchBatch + 1 >= batchCount} onClick={() => changeMatchBatch(Math.min(batchCount - 1, matchBatch + 1))}>Next 10 →</button></div>
         <p className="ew-instruction">Tap a picture, then tap its matching word.</p>
-        <div className="ew-match-board">
-          <div className="ew-match-pictures" aria-label="Pictures to match">{set.words.map((item) => <button type="button" key={item.id} className={`ew-match-picture${selectedPicture === item.id ? " is-selected" : ""}${matched.includes(item.id) ? " is-matched" : ""}`} aria-label={`Picture ${item.word}`} aria-pressed={selectedPicture === item.id} disabled={matched.includes(item.id)} onClick={() => chooseMatchPicture(item.id)}><span aria-hidden="true">{item.picture}</span>{matched.includes(item.id) && <small>Matched ✓</small>}</button>)}</div>
-          <div className="ew-match-words" aria-label="Words to match">{set.words.map((item) => <button type="button" key={item.id} className={`ew-match-word${selectedWord === item.id ? " is-selected" : ""}${matched.includes(item.id) ? " is-matched" : ""}`} aria-pressed={selectedWord === item.id} disabled={matched.includes(item.id)} onClick={() => chooseMatchWord(item.id)}>{item.word}</button>)}</div>
+        <div key={matchBatch} className="ew-match-board">
+          <div className="ew-match-pictures" aria-label="Pictures to match">{matchWords.map((item) => <button type="button" key={item.id} className={`ew-match-picture${selectedPicture === item.id ? " is-selected" : ""}${matched.includes(item.id) ? " is-matched" : ""}`} aria-label={`Picture ${item.word}`} aria-pressed={selectedPicture === item.id} disabled={matched.includes(item.id)} onClick={() => chooseMatchPicture(item.id)}><VocabularyPicture word={item} />{matched.includes(item.id) && <small>Matched ✓</small>}</button>)}</div>
+          <div className="ew-match-words" aria-label="Words to match">{matchWords.map((item) => <button type="button" key={item.id} className={`ew-match-word${selectedWord === item.id ? " is-selected" : ""}${matched.includes(item.id) ? " is-matched" : ""}`} aria-pressed={selectedWord === item.id} disabled={matched.includes(item.id)} onClick={() => chooseMatchWord(item.id)}>{item.word}</button>)}</div>
         </div>
         <ProgressBar value={Math.round((matched.length / set.words.length) * 100)} label={`${matched.length} of ${set.words.length} picture matches`} />
         {matchFeedback && <FeedbackMessage tone={matchFeedback.includes("lovely") ? "good" : "try"}>{matchFeedback}</FeedbackMessage>}
-        <button type="button" className="ew-reset-link" onClick={() => { setMatched([]); setSelectedPicture(null); setSelectedWord(null); setMatchFeedback(""); }}>Start matching again</button>
+        <button type="button" className="ew-reset-link" onClick={() => { setMatchedBySet((current) => ({ ...current, [set.id]: [] })); setSelectedPicture(null); setSelectedWord(null); setMatchFeedback(""); }}>Start matching again</button>
       </>}
       {mode === "spelling" && <>
-        <div className="ew-spelling-card"><div className="ew-word-picture ew-word-picture--small"><span aria-hidden="true">{spellingWord.picture}</span><small>{set.label}</small></div><p className="ew-instruction">Tap the letters to spell this word.</p><div className="ew-spelling-answer" aria-label={`Your spelling: ${chosenSpelling || "empty"}`}>{spellingLetters.length ? spellingLetters.map((index, place) => <button type="button" key={`${index}-${place}`} aria-label={`Remove letter ${Array.from(spellingWord.word.toLocaleUpperCase())[index]}`} onClick={() => { setSpellingLetters((letters) => letters.filter((_, current) => current !== place)); setSpellingFeedback(""); }}>{Array.from(spellingWord.word.toLocaleUpperCase())[index]}</button>) : <span>Tap letters below</span>}</div><div className="ew-letter-bank">{spellingBank.map(({ letter, index }) => <button type="button" key={`${letter}-${index}`} disabled={spellingLetters.includes(index)} onClick={() => { setSpellingLetters((letters) => [...letters, index]); setSpellingFeedback(""); }}>{letter}</button>)}</div>{showHint && <p className="ew-hint">Hint: {spellingWord.meaning}</p>}<div className="ew-button-row"><button type="button" className="ew-button ew-button--light" onClick={() => { setSpellingLetters([]); setSpellingFeedback(""); }}>Reset letters</button><button type="button" className="ew-button ew-button--light" onClick={() => setShowHint((shown) => !shown)}>{showHint ? "Hide hint" : "Hint"}</button><button type="button" className="ew-button ew-button--blue" onClick={checkSpelling}>Check word</button></div>{spellingFeedback && <FeedbackMessage tone={spellingFeedback.startsWith("That's") ? "good" : "try"}>{spellingFeedback}</FeedbackMessage>}{spellingFeedback.startsWith("That's") && spellingIndex < set.words.length - 1 && <button type="button" className="ew-button ew-button--blue" onClick={() => { setSpellingIndex((index) => index + 1); setSpellingLetters([]); setSpellingFeedback(""); setShowHint(false); }}>Next word →</button>}</div>
+        <div className="ew-spelling-card"><div className="ew-word-picture ew-word-picture--small"><VocabularyPicture word={spellingWord} /><small>{set.label}</small></div><p className="ew-instruction">Tap the letters to spell this word.</p><div className="ew-spelling-answer" aria-label={`Your spelling: ${chosenSpelling || "empty"}`}>{spellingLetters.length ? spellingLetters.map((sourceIndex, place) => { const character = Array.from(spellingWord.word.toLocaleUpperCase())[sourceIndex]; return <button type="button" key={`${sourceIndex}-${place}`} className={character === " " ? "ew-letter-space" : undefined} aria-label={`Remove ${character === " " ? "space" : `letter ${character}`}`} onClick={() => { updateSpelling({ letters: spellingLetters.filter((_, current) => current !== place), feedback: "" }); }}>{character === " " ? <small>SPACE</small> : character}</button>; }) : <span>Tap letters below</span>}</div><div className="ew-letter-bank" aria-label="Letter tiles">{spellingBank.map(({ character, sourceIndex }) => <button type="button" key={sourceIndex} className={character === " " ? "ew-letter-space" : undefined} aria-label={character === " " ? "Space" : `Letter ${character}`} disabled={spellingLetters.includes(sourceIndex)} onClick={() => { updateSpelling({ letters: [...spellingLetters, sourceIndex], feedback: "" }); }}>{character === " " ? <small>SPACE</small> : character}</button>)}</div>{showHint && <p className="ew-hint">Hint: {spellingWord.meaning}</p>}<div className="ew-button-row"><button type="button" className="ew-button ew-button--light" onClick={() => { updateSpelling({ letters: [], feedback: "" }); }}>Reset letters</button><button type="button" className="ew-button ew-button--light" onClick={() => setShowHint((shown) => !shown)}>{showHint ? "Hide hint" : "Hint"}</button><button type="button" className="ew-button ew-button--blue" onClick={checkSpelling}>Check word</button></div>{spellingFeedback && <FeedbackMessage tone={spellingFeedback.startsWith("That's") ? "good" : "try"}>{spellingFeedback}</FeedbackMessage>}{spellingFeedback.startsWith("That's") && spellingIndex < set.words.length - 1 && <button type="button" className="ew-button ew-button--blue" onClick={() => { updateSpelling({ index: spellingIndex + 1, letters: [], feedback: "" }); setShowHint(false); }}>Next word →</button>}</div>
       </>}
     </div>
   );
@@ -361,7 +972,7 @@ function StoryActivity({ storyIndex, onStoryIndex, onComplete, onStart, speak, s
   const [page, setPage] = useState(0);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState("");
-  const selectStory = (index: number) => { onStoryIndex(index); onStart(`story-${stories[index].id}`); };
+  const selectStory = (index: number) => { onStoryIndex(index); onStart(`story-${stories[index].id}`); setPage(0); setAnswer(""); setFeedback(""); };
   const checkAnswer = () => {
     if (!answer) { setFeedback("Pick an answer first, then check it."); return; }
     if (answer === story.answer) { setFeedback("You understood the story. Well read!"); onComplete(`story-${story.id}`); }
@@ -370,15 +981,15 @@ function StoryActivity({ storyIndex, onStoryIndex, onComplete, onStart, speak, s
   return (
     <div className="ew-activity-content">
       <div className="ew-story-shelf" aria-label="Choose a story">{stories.map((item, index) => <button type="button" key={item.id} className={`ew-story-choice${index === storyIndex ? " is-active" : ""}`} onClick={() => selectStory(index)}><span aria-hidden="true">{item.picture}</span><b>{item.title}</b><small>{item.level} · {item.minutes} min</small></button>)}</div>
-      <article className="ew-story-reader"><div className="ew-story-reader-head"><div><p className="ew-eyebrow">{story.level} reader · about {story.minutes} min</p><h3>{story.title}</h3></div><span aria-hidden="true" className="ew-story-big-icon">{story.picture}</span></div><div className="ew-story-page"><span className="ew-page-number">Page {page + 1} of {story.pages.length}</span><p>{highlightStoryVocabulary(story.pages[page], story.vocabulary)}</p><div className="ew-vocab-tags">{story.vocabulary.map((term) => <span key={term}>{term}</span>)}</div></div><div className="ew-button-row ew-story-controls"><button type="button" className="ew-button ew-button--light" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous page</button><button type="button" className="ew-button ew-button--blue" onClick={() => speak(story.pages[page])}>🔊 Read this page</button>{page < story.pages.length - 1 ? <button type="button" className="ew-button ew-button--light" onClick={() => setPage((current) => current + 1)}>Next page →</button> : <span className="ew-read-complete">Story read! Answer below ↓</span>}</div>
+      <article className="ew-story-reader"><div className="ew-story-reader-head"><div><p className="ew-eyebrow">{story.level} reader · about {story.minutes} min</p><h3>{story.title}</h3></div><span aria-hidden="true" className="ew-story-big-icon">{story.picture}</span></div><div className="ew-story-page" key={page}><span className="ew-page-number">Page {page + 1} of {story.pages.length}</span><p>{highlightStoryVocabulary(story.pages[page], story.vocabulary)}</p><div className="ew-vocab-tags">{story.vocabulary.map((term) => <span key={term}>{term}</span>)}</div></div><div className="ew-button-row ew-story-controls"><button type="button" className="ew-button ew-button--light" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>← Previous page</button><button type="button" className="ew-button ew-button--blue" onClick={() => speak(story.pages[page])}>🔊 Read this page</button>{page < story.pages.length - 1 ? <button type="button" className="ew-button ew-button--light" onClick={() => setPage((current) => current + 1)}>Next page →</button> : <span className="ew-read-complete">Story read! Answer below ↓</span>}</div>
         {page === story.pages.length - 1 && <div className="ew-story-question"><h4>{story.question}</h4><div className="ew-choice-list">{story.choices.map((choice) => <button type="button" key={choice} className={`ew-answer-choice${answer === choice ? " is-selected" : ""}`} aria-pressed={answer === choice} onClick={() => { setAnswer(choice); setFeedback(""); }}>{choice}</button>)}</div><div className="ew-button-row"><button type="button" className="ew-button ew-button--gold" onClick={checkAnswer}>Check answer</button><button type="button" className="ew-button ew-button--light" onClick={() => { setAnswer(""); setFeedback(""); setPage(0); }}>Read again</button></div>{feedback && <FeedbackMessage tone={feedback.startsWith("You understood") ? "good" : "try"}>{feedback}</FeedbackMessage>}{speechMessage && <p className="ew-speech-status" role="status">{speechMessage}</p>}</div>}
       </article>
     </div>
   );
 }
 
-function GrammarActivity({ lessonIndex, onLessonIndex, onStart, onComplete }: { lessonIndex: number; onLessonIndex: (index: number) => void; onStart: (id: string) => void; onComplete: (id: string) => void }) {
-  const [mode, setMode] = useState<"lesson" | "game">("lesson");
+function GrammarActivity({ lessonIndex, onLessonIndex, onStart, onComplete, initialMode = "lesson" }: { lessonIndex: number; onLessonIndex: (index: number) => void; onStart: (id: string) => void; onComplete: (id: string) => void; initialMode?: "lesson" | "game" }) {
+  const [mode, setMode] = useState<"lesson" | "game">(initialMode);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [selected, setSelected] = useState("");
   const [answerState, setAnswerState] = useState<"idle" | "right" | "wrong">("idle");
@@ -390,7 +1001,7 @@ function GrammarActivity({ lessonIndex, onLessonIndex, onStart, onComplete }: { 
   const lesson = grammarLessons[lessonIndex];
   const question = lesson.questions[questionIndex];
   const gameRound = partsOfSpeechRounds[gameIndex];
-  const selectLesson = (index: number) => { onLessonIndex(index); onStart(`grammar-${grammarLessons[index].id}`); setMode("lesson"); };
+  const selectLesson = (index: number) => { onLessonIndex(index); setQuestionIndex(0); setSelected(""); setAnswerState("idle"); setShowHint(false); onStart(`grammar-${grammarLessons[index].id}`); setMode("lesson"); };
   const checkQuiz = () => {
     if (!selected) { setAnswerState("wrong"); return; }
     if (selected === question.answer) {
@@ -515,29 +1126,25 @@ function SentenceBuilderActivity({ index, onIndex, onStart, onComplete }: { inde
   return <div className="ew-activity-content"><article className="ew-builder-card"><div className="ew-builder-top"><span className="ew-builder-icon" aria-hidden="true">🧩</span><div><p className="ew-eyebrow">Sentence {index + 1} of {sentencePrompts.length}</p><h3>Put the words in order</h3></div></div><p className="ew-instruction">Tap a word, or drag it into the sentence. Tap a placed word to send it back.</p><div className="ew-sentence-drop" onDragOver={(event) => event.preventDefault()} onDrop={dropTile} aria-label="Sentence being built">{placed.length ? placed.map((tileIndex, position) => <button type="button" key={`${tileIndex}-${position}`} draggable onDragStart={() => setDragged(tileIndex)} onClick={() => { setPlaced((current) => current.filter((_, currentIndex) => currentIndex !== position)); setFeedback(""); }}>{item.tiles[tileIndex]}</button>) : <span>Build your sentence here…</span>}</div><div className="ew-tile-bank" aria-label="Word tiles">{remaining.map(({ word, tileIndex }) => <button type="button" key={tileIndex} draggable onDragStart={() => setDragged(tileIndex)} onClick={() => addTile(tileIndex)}>{word}</button>)}</div>{showHint && <p className="ew-hint">Hint: {item.hint}</p>}<div className="ew-button-row"><button type="button" className="ew-button ew-button--light" onClick={() => { setPlaced([]); setFeedback(""); }}>Reset</button><button type="button" className="ew-button ew-button--light" onClick={() => setShowHint((shown) => !shown)}>{showHint ? "Hide hint" : "Hint"}</button><button type="button" className="ew-button ew-button--gold" onClick={check}>Check sentence</button>{feedback.startsWith("Your words") && <button type="button" className="ew-button ew-button--blue" onClick={next}>Next sentence →</button>}</div>{feedback && <FeedbackMessage tone={feedback.startsWith("Your words") ? "good" : "try"}>{feedback}</FeedbackMessage>}<p className="ew-hint">Keyboard tip: Tab to a tile and press Enter or Space to move it.</p></article></div>;
 }
 
-export default function EnglishWorld() {
-  const [activeCategory, setActiveCategory] = useState<EnglishCategoryId>("grammar");
+function ConversationActivity({ initialActivityId, onStart, onComplete }: { initialActivityId: string | null; onStart: (id: string) => void; onComplete: (id: string) => void }) {
+  const startIndex = Math.max(0, conversationScenarios.findIndex((item) => initialActivityId === `sentence-${item.id}`));
+  const [open, setOpen] = useState(() => Boolean(initialActivityId?.startsWith("sentence-dialogue-")));
+  const [index, setIndex] = useState(startIndex);
+  const [feedback, setFeedback] = useState("");
+  const scenario = conversationScenarios[index];
+  const next = () => { const nextIndex = (index + 1) % conversationScenarios.length; setIndex(nextIndex); setFeedback(""); onStart(`sentence-${conversationScenarios[nextIndex].id}`); };
+  return <article className="ew-builder-card"><div className="ew-builder-top"><span className="ew-builder-icon" aria-hidden="true">💬</span><div><p className="ew-eyebrow">50 everyday dialogue situations</p><h3>Conversation Corner</h3></div></div><p className="ew-instruction">Practise a friendly reply in school, shops, and everyday life.</p><button type="button" className="ew-button ew-button--pink" onClick={() => { setOpen((value) => !value); setFeedback(""); onStart(`sentence-${scenario.id}`); }}>{open ? "Close conversation practice" : "Start conversation practice"}</button>{open && <><p className="ew-eyebrow">Conversation {index + 1} of {conversationScenarios.length} · {scenario.level}</p><p className="ew-instruction"><b>{scenario.character}:</b> “{scenario.prompt}”</p><p className="ew-hint">{scenario.hint}</p><div className="ew-choice-list">{scenario.choices.map((choice) => <button type="button" key={choice} className="ew-answer-choice" disabled={feedback.startsWith("That is a friendly")} onClick={() => { const correct = choice === scenario.answer; setFeedback(correct ? "That is a friendly reply! The conversation is complete." : "Try a kind, clear reply that fits what they said."); if (correct) onComplete(`sentence-${scenario.id}`); }}>{choice}</button>)}</div>{feedback && <FeedbackMessage tone={feedback.startsWith("That is a friendly") ? "good" : "try"}>{feedback}</FeedbackMessage>}{feedback.startsWith("That is a friendly") && <button type="button" className="ew-button ew-button--blue" onClick={next}>Next conversation →</button>}</>}</article>;
+}
+
+function useEnglishProgress() {
   const [progress, setProgress] = useState<ProgressRecord>(EMPTY_PROGRESS);
   const [storageReady, setStorageReady] = useState(false);
   const [storageNotice, setStorageNotice] = useState("");
   const [todayKey, setTodayKey] = useState("");
-  const [vocabularySet, setVocabularySet] = useState(0);
-  const [vocabularyWordIndex, setVocabularyWordIndex] = useState(0);
-  const [vocabularyRevealed, setVocabularyRevealed] = useState(false);
-  const [vocabularyMode, setVocabularyMode] = useState<"cards" | "match" | "spelling">("cards");
-  const [storyIndex, setStoryIndex] = useState(0);
-  const [grammarIndex, setGrammarIndex] = useState(0);
-  const [listeningIndex, setListeningIndex] = useState(0);
-  const [speakingIndex, setSpeakingIndex] = useState(0);
-  const [sentenceIndex, setSentenceIndex] = useState(0);
-  const [speechMessage, setSpeechMessage] = useState("");
-  const activityRef = useRef<HTMLElement>(null);
-  const selectedCategory = englishCategories.find((category) => category.id === activeCategory) ?? englishCategories[2];
-  const completedCount = progress.completed.length;
-  const stars = completedCount + progress.dailyAwards.length;
-  const badges = Math.floor(completedCount / 3);
-  const todayTarget = todayKey ? getDailyTarget(todayKey) : dailyChallengeTargets[0];
+  const todayTarget = todayKey ? getDailyTarget(todayKey) : null;
   const dailyComplete = Boolean(todayKey && progress.dailyAwards.includes(todayKey));
+  const stars = progress.completed.length + progress.dailyAwards.length;
+  const badges = Math.floor(progress.completed.length / 3);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -550,6 +1157,7 @@ export default function EnglishWorld() {
             completed: [...new Set(parsed.completed.filter((id): id is string => typeof id === "string"))],
             dailyAwards: [...new Set(parsed.dailyAwards.filter((id): id is string => typeof id === "string"))],
             lastActivityId: parsed.lastActivityId,
+            reviewWordIds: [...new Set((parsed.reviewWordIds ?? []).filter((id): id is string => typeof id === "string"))],
           });
         }
       } catch {
@@ -573,6 +1181,34 @@ export default function EnglishWorld() {
     return () => window.clearTimeout(timer);
   }, [progress, storageReady]);
 
+  const rememberActivity = useCallback((id: string) => {
+    setProgress((current) => ({ ...current, lastActivityId: id }));
+  }, []);
+
+  const completeActivity = useCallback((id: string) => {
+    const isNew = !progress.completed.includes(id);
+    const earnsDaily = Boolean(todayKey && id === todayTarget?.activityId && !progress.dailyAwards.includes(todayKey));
+    setProgress((current) => ({
+      ...current,
+      completed: current.completed.includes(id) ? current.completed : [...current.completed, id],
+      dailyAwards: earnsDaily && todayKey && !current.dailyAwards.includes(todayKey) ? [...current.dailyAwards, todayKey] : current.dailyAwards,
+      lastActivityId: id,
+    }));
+    if (isNew || earnsDaily) fireConfetti(window.innerWidth / 2, window.innerHeight * 0.36, 24);
+  }, [progress.completed, progress.dailyAwards, todayKey, todayTarget?.activityId]);
+
+  const markWordForReview = useCallback((id: string) => {
+    setProgress((current) => current.reviewWordIds.includes(id) ? current : { ...current, reviewWordIds: [...current.reviewWordIds, id] });
+  }, []);
+  const clearWordForReview = useCallback((id: string) => {
+    setProgress((current) => ({ ...current, reviewWordIds: current.reviewWordIds.filter((wordId) => wordId !== id) }));
+  }, []);
+
+  return { progress, storageReady, storageNotice, todayKey, todayTarget, dailyComplete, stars, badges, rememberActivity, completeActivity, markWordForReview, clearWordForReview };
+}
+
+function useBrowserSpeech() {
+  const [speechMessage, setSpeechMessage] = useState("");
   useEffect(() => () => {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
   }, []);
@@ -597,109 +1233,117 @@ export default function EnglishWorld() {
     }
   }, []);
 
-  const rememberActivity = (id: string) => setProgress((current) => ({ ...current, lastActivityId: id }));
-  const completeActivity = (id: string) => {
-    const isNew = !progress.completed.includes(id);
-    const earnsDaily = todayKey && id === todayTarget.activityId && !progress.dailyAwards.includes(todayKey);
-    setProgress((current) => ({
-      completed: current.completed.includes(id) ? current.completed : [...current.completed, id],
-      dailyAwards: earnsDaily && !current.dailyAwards.includes(todayKey) ? [...current.dailyAwards, todayKey] : current.dailyAwards,
-      lastActivityId: id,
-    }));
-    if (isNew || earnsDaily) {
-      const bounds = activityRef.current?.getBoundingClientRect();
-      fireConfetti(bounds ? bounds.left + bounds.width / 2 : window.innerWidth / 2, bounds ? bounds.top + 100 : window.innerHeight / 3, 20);
-    }
-  };
+  return { speak, speechMessage };
+}
 
-  const focusActivity = () => window.setTimeout(() => activityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
-  const startCurrentActivity = () => {
-    const activityIds: Record<EnglishCategoryId, string> = {
-      vocabulary: `vocabulary-${wordSets[vocabularySet].id}`,
-      stories: `story-${stories[storyIndex].id}`,
-      grammar: `grammar-${grammarLessons[grammarIndex].id}`,
-      listening: `listening-${listeningActivities[listeningIndex].id}`,
-      speaking: `speaking-${speakingPrompts[speakingIndex].id}`,
-      sentences: `sentence-${sentencePrompts[sentenceIndex].id}`,
-    };
-    rememberActivity(activityIds[activeCategory]);
-    focusActivity();
-  };
+function categoryActivityTotal(categoryId: EnglishCategoryId) {
+  switch (categoryId) {
+    case "vocabulary": return wordSets.length * 3;
+    case "stories": return stories.length;
+    case "grammar": return grammarLessons.length + 1;
+    case "listening": return listeningActivities.length;
+    case "speaking": return speakingPrompts.length;
+    case "sentences": return sentencePrompts.length + conversationScenarios.length;
+  }
+}
 
-  const openActivity = (id: string) => {
-    if (id.startsWith("vocabulary-")) {
-      const index = wordSets.findIndex((set) => set.id === id.slice("vocabulary-".length));
-      if (index >= 0) { setVocabularySet(index); setVocabularyWordIndex(0); setVocabularyMode("cards"); }
-      setActiveCategory("vocabulary");
-    } else if (id.startsWith("story-")) {
-      const index = stories.findIndex((story) => story.id === id.slice("story-".length));
-      if (index >= 0) setStoryIndex(index);
-      setActiveCategory("stories");
-    } else if (id.startsWith("grammar-")) {
-      const index = grammarLessons.findIndex((lesson) => lesson.id === id.slice("grammar-".length));
-      if (index >= 0) setGrammarIndex(index);
-      setActiveCategory("grammar");
-    } else if (id.startsWith("match-") || id.startsWith("spelling-")) {
-      const isMatch = id.startsWith("match-");
-      const index = wordSets.findIndex((set) => set.id === id.slice(isMatch ? "match-".length : "spelling-".length));
-      if (index >= 0) setVocabularySet(index);
-      setVocabularyMode(isMatch ? "match" : "spelling");
-      setActiveCategory("vocabulary");
-    } else if (id.startsWith("listening-")) {
-      const index = listeningActivities.findIndex((activity) => activity.id === id.slice("listening-".length));
-      if (index >= 0) setListeningIndex(index);
-      setActiveCategory("listening");
-    } else if (id.startsWith("speaking-")) {
-      const index = speakingPrompts.findIndex((prompt) => prompt.id === id.slice("speaking-".length));
-      if (index >= 0) setSpeakingIndex(index);
-      setActiveCategory("speaking");
-    } else if (id.startsWith("sentence-")) {
-      const index = sentencePrompts.findIndex((item) => item.id === id.slice("sentence-".length));
-      if (index >= 0) setSentenceIndex(index);
-      setActiveCategory("sentences");
-    }
-    rememberActivity(id);
-    focusActivity();
-  };
+function defaultActivityId(categoryId: EnglishCategoryId) {
+  switch (categoryId) {
+    case "vocabulary": return `vocabulary-${wordSets[0].id}`;
+    case "stories": return `story-${stories[0].id}`;
+    case "grammar": return `grammar-${grammarLessons[0].id}`;
+    case "listening": return `listening-${listeningActivities[0].id}`;
+    case "speaking": return `speaking-${speakingPrompts[0].id}`;
+    case "sentences": return `sentence-${sentencePrompts[0].id}`;
+  }
+}
 
-  const continueActivity = () => {
-    if (!progress.lastActivityId) return;
-    openActivity(progress.lastActivityId);
-  };
+function activityIndex<T extends { id: string }>(id: string, prefix: string, items: T[]) {
+  if (!id.startsWith(prefix)) return 0;
+  const index = items.findIndex((item) => item.id === id.slice(prefix.length));
+  return index < 0 ? 0 : index;
+}
 
-  const chooseCategory = (id: EnglishCategoryId) => {
-    setActiveCategory(id);
-    setSpeechMessage("");
-  };
+export default function EnglishWorld() {
+  const { progress, storageReady, todayTarget, dailyComplete, badges, stars } = useEnglishProgress();
+  return (
+    <div className="english-world ew-landing-page">
+      <WorldNavigation active="english" />
+      <EnglishHero />
+      <main className="ew-landing-main">
+        <EnglishDashboard
+          progress={progress}
+          storageReady={storageReady}
+          todayTarget={todayTarget}
+          dailyComplete={dailyComplete}
+          badges={badges}
+          stars={stars}
+        />
+        <AdventureWorlds progress={progress} storageReady={storageReady} />
+        <footer className="ew-world-footer"><span aria-hidden="true">✦</span><p>Small steps. Bright words. Big dreams.</p><Link href="/">Back to KiddoWorld <span aria-hidden="true">→</span></Link></footer>
+      </main>
+    </div>
+  );
+}
+
+export function EnglishAdventure({ adventure, initialActivityId }: { adventure: EnglishCategoryId; initialActivityId?: string }) {
+  const category = englishCategories.find((item) => item.id === adventure);
+  const { progress, storageReady, storageNotice, rememberActivity, completeActivity, markWordForReview, clearWordForReview } = useEnglishProgress();
+  const { speak, speechMessage } = useBrowserSpeech();
+  const validActivityId = initialActivityId && activityCategory(initialActivityId) === adventure ? initialActivityId : defaultActivityId(adventure);
+  const [vocabularySet, setVocabularySet] = useState(() => activityIndex(validActivityId, "vocabulary-", wordSets) || activityIndex(validActivityId, "match-", wordSets) || activityIndex(validActivityId, "spelling-", wordSets));
+  const [vocabularyWordIndex, setVocabularyWordIndex] = useState(0);
+  const [vocabularyRevealed, setVocabularyRevealed] = useState(false);
+  const [vocabularyMode, setVocabularyMode] = useState<"cards" | "match" | "spelling">(() => validActivityId.startsWith("match-") ? "match" : validActivityId.startsWith("spelling-") ? "spelling" : "cards");
+  const [storyIndex, setStoryIndex] = useState(() => activityIndex(validActivityId, "story-", stories));
+  const [grammarIndex, setGrammarIndex] = useState(() => activityIndex(validActivityId, "grammar-", grammarLessons));
+  const [listeningIndex, setListeningIndex] = useState(() => activityIndex(validActivityId, "listening-", listeningActivities));
+  const [speakingIndex, setSpeakingIndex] = useState(() => activityIndex(validActivityId, "speaking-", speakingPrompts));
+  const [sentenceIndex, setSentenceIndex] = useState(() => activityIndex(validActivityId, "sentence-", sentencePrompts));
+  const grammarMode = validActivityId === "grammar-parts-of-speech" ? "game" : "lesson";
+  const completed = categoryCompletionCount(adventure, progress.completed);
+  const total = categoryActivityTotal(adventure);
+  const progressPercent = Math.round((completed / total) * 100);
+
+  useEffect(() => {
+    rememberActivity(validActivityId);
+  }, [rememberActivity, validActivityId]);
+
+  if (!category) return null;
 
   return (
-    <div className="english-world">
+    <div className={`english-world ew-adventure-page ew-adventure-page--${adventure}`}>
       <WorldNavigation active="english" />
-      <EnglishHero onStart={() => { chooseCategory("grammar"); document.getElementById("ew-learn")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />
-      <main className="ew-dashboard" id="ew-learn">
-        <div className="ew-dashboard-heading"><div><p className="ew-eyebrow">Welcome, English explorer!</p><h2>What shall we learn today?</h2><p>Choose a little adventure and learn at your own pace.</p></div><div className="ew-learning-level"><span aria-hidden="true">👑</span><span><b>Beginner</b><small>Learning level</small></span></div></div>
-        <div className="ew-dashboard-layout">
-          <aside className="ew-sidebar"><CategoryList active={activeCategory} onSelect={chooseCategory} /></aside>
-          <div className="ew-main-column">
-            <ProgressSummary completed={completedCount} stars={stars} badges={badges} />
-            <div className="ew-small-card-grid"><ContinueCard activityId={progress.lastActivityId} onContinue={continueActivity} onStart={() => { chooseCategory("grammar"); focusActivity(); }} /><DailyChallenge targetTitle={todayTarget.title} subtitle={todayTarget.subtitle} complete={dailyComplete} onStart={() => openActivity(todayTarget.activityId)} /></div>
-            <FeaturedCategory category={selectedCategory} completed={categoryCompletionCount(activeCategory, progress.completed)} onStart={startCurrentActivity} />
-            <section className="ew-section-heading"><div><p className="ew-eyebrow">Explore the world</p><h2>Choose your adventure</h2></div><span>Six ways to learn English ✨</span></section>
-            <CategoryGrid active={activeCategory} onSelect={(id) => { chooseCategory(id); focusActivity(); }} />
-            <section className={`ew-activity-panel ew-activity-panel--${selectedCategory.tone}`} id="ew-activity" ref={activityRef} aria-labelledby="ew-activity-title">
-              <div className="ew-activity-heading"><div><p className="ew-eyebrow">Your next little step</p><h2 id="ew-activity-title">{selectedCategory.title}</h2><p>{selectedCategory.subtitle}. Take your time, try again, and have fun.</p></div><span className="ew-activity-heading-icon" aria-hidden="true">{selectedCategory.icon}</span></div>
-              {activeCategory === "vocabulary" && <VocabularyActivity key={vocabularySet} activeSet={vocabularySet} onSet={setVocabularySet} wordIndex={vocabularyWordIndex} onWordIndex={setVocabularyWordIndex} revealed={vocabularyRevealed} onReveal={() => setVocabularyRevealed((shown) => !shown)} onComplete={completeActivity} onStart={rememberActivity} mode={vocabularyMode} onMode={setVocabularyMode} />}
-              {activeCategory === "stories" && <StoryActivity key={storyIndex} storyIndex={storyIndex} onStoryIndex={setStoryIndex} onComplete={completeActivity} onStart={rememberActivity} speak={speak} speechMessage={speechMessage} />}
-              {activeCategory === "grammar" && <GrammarActivity key={grammarIndex} lessonIndex={grammarIndex} onLessonIndex={setGrammarIndex} onStart={rememberActivity} onComplete={completeActivity} />}
-              {activeCategory === "listening" && <ListeningActivity index={listeningIndex} onIndex={setListeningIndex} onStart={rememberActivity} onComplete={completeActivity} speak={speak} speechMessage={speechMessage} />}
-              {activeCategory === "speaking" && <SpeakingActivity index={speakingIndex} onIndex={setSpeakingIndex} onStart={rememberActivity} onComplete={completeActivity} speak={speak} speechMessage={speechMessage} />}
-              {activeCategory === "sentences" && <SentenceBuilderActivity index={sentenceIndex} onIndex={setSentenceIndex} onStart={rememberActivity} onComplete={completeActivity} />}
-              <p className="ew-reward-note">{storageNotice || (storageReady ? "Your progress is saved in this browser on this device." : "Loading your saved progress…")}</p>
-            </section>
-            <section className="ew-badges-section" aria-labelledby="ew-badges-title"><div><p className="ew-eyebrow">Earned by trying</p><h2 id="ew-badges-title">Your badges</h2><p>One badge appears for every three different activities you finish.</p></div><div className="ew-badge-row">{badges ? Array.from({ length: badges }).map((_, index) => <span className="ew-earned-badge" key={index} aria-label={`Badge ${index + 1}`}>🏅<small>Word explorer</small></span>) : <p className="ew-empty-badges">Your first badge is waiting. Finish three activities to earn it!</p>}</div></section>
+      <main className="ew-adventure-main">
+        <header className={`ew-adventure-hero ew-adventure-hero--${adventure}`}>
+          <span className="ew-adventure-halo" aria-hidden="true" />
+          <span className="ew-adventure-sheen" aria-hidden="true" />
+          <div className="ew-adventure-copy">
+            <Link href="/english#adventures" className="ew-back-link"><span aria-hidden="true">←</span> Back to English World</Link>
+            <p className="ew-adventure-kicker"><span aria-hidden="true">✦</span> Your next little step</p>
+            <div className="ew-adventure-title-row">
+              <span className="ew-adventure-crest" aria-hidden="true"><AdventureGlyph category={adventure} /></span>
+              <h1>{category.title}</h1>
+            </div>
+            <p className="ew-adventure-description">{categoryDescriptions[adventure]}</p>
+            <ProgressBar value={progressPercent} label={`${completed} of ${total} activities complete`} />
+            {storageNotice && <p className="ew-storage-notice" role="status">{storageNotice}</p>}
+            <p className="ew-storage-note">{storageReady ? "Your progress is saved in this browser on this device." : "Loading your saved progress…"}</p>
           </div>
-        </div>
-        <footer className="ew-footer"><span>⭐</span><p>Small steps, bright words, big dreams.</p><a href="#ew-learn">Back to your learning map ↑</a></footer>
+          <div className="ew-adventure-art"><AdventureIllustration category={adventure} /></div>
+          <span className="ew-adventure-spark ew-adventure-spark--one" aria-hidden="true">✦</span>
+          <span className="ew-adventure-spark ew-adventure-spark--two" aria-hidden="true">✧</span>
+        </header>
+
+        <section className={`ew-activity-panel ew-activity-panel--${category.tone}`} id="ew-activity" aria-labelledby="ew-activity-title">
+          <div className="ew-activity-heading"><div><p className="ew-eyebrow">Pick up a pencil, open a book, and explore</p><h2 id="ew-activity-title">{category.shortTitle} activity</h2><p>{category.subtitle}. Take your time, try again, and have fun.</p></div><span className={`ew-activity-heading-icon ew-activity-heading-icon--${adventure}`} aria-hidden="true"><AdventureIllustration category={adventure} className="ew-activity-mark" /></span></div>
+          {adventure === "vocabulary" && <VocabularyActivity activeSet={vocabularySet} onSet={setVocabularySet} wordIndex={vocabularyWordIndex} onWordIndex={setVocabularyWordIndex} revealed={vocabularyRevealed} onReveal={() => setVocabularyRevealed((shown) => !shown)} onComplete={completeActivity} onStart={rememberActivity} mode={vocabularyMode} onMode={setVocabularyMode} speak={speak} reviewWordIds={progress.reviewWordIds} onReviewWord={markWordForReview} onClearReview={clearWordForReview} />}
+          {adventure === "stories" && <StoryActivity key={storyIndex} storyIndex={storyIndex} onStoryIndex={setStoryIndex} onComplete={completeActivity} onStart={rememberActivity} speak={speak} speechMessage={speechMessage} />}
+          {adventure === "grammar" && <GrammarActivity key={grammarIndex} lessonIndex={grammarIndex} onLessonIndex={setGrammarIndex} onStart={rememberActivity} onComplete={completeActivity} initialMode={grammarMode} />}
+          {adventure === "listening" && <ListeningActivity index={listeningIndex} onIndex={setListeningIndex} onStart={rememberActivity} onComplete={completeActivity} speak={speak} speechMessage={speechMessage} />}
+          {adventure === "speaking" && <SpeakingActivity index={speakingIndex} onIndex={setSpeakingIndex} onStart={rememberActivity} onComplete={completeActivity} speak={speak} speechMessage={speechMessage} />}
+          {adventure === "sentences" && <><SentenceBuilderActivity index={sentenceIndex} onIndex={setSentenceIndex} onStart={rememberActivity} onComplete={completeActivity} /><ConversationActivity initialActivityId={validActivityId} onStart={rememberActivity} onComplete={completeActivity} /></>}
+        </section>
       </main>
     </div>
   );

@@ -49,13 +49,13 @@ const learningZones = [
   },
   {
     id: "games",
-    title: "Little Scientists",
-    subtitle: "Discover how things work",
-    description: "Educational games are on the way. The activities here will be playable soon.",
+    title: "Learning Games",
+    subtitle: "Play, practise & grow",
+    description: "Explore vocabulary, grammar, spelling, listening, and story games.",
     symbol: "game",
     color: "games",
-    state: "Coming soon",
-    href: null,
+    state: "Ready to play",
+    href: "/games",
   },
   {
     id: "rewards",
@@ -169,7 +169,7 @@ export default function Home() {
             <span className="space-benefit-divider" aria-hidden="true" />
             <div className="space-benefit">
               <span className="space-benefit-badge space-benefit-badge--game"><BenefitIcon kind="game" /></span>
-              <span><strong>Play Games</strong><small>Educational games soon</small></span>
+              <span><strong>Play Games</strong><small>Twenty learning games</small></span>
             </div>
             <span className="space-benefit-divider" aria-hidden="true" />
             <div className="space-benefit">

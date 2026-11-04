@@ -41,13 +41,14 @@ export function GameWorldArt({ kind, className = "" }: { kind: GameArtKind; clas
   return <svg className={className} viewBox="0 0 160 100" role="img" aria-label="Colorful sentence tiles"><defs><linearGradient id={`${id}tile`} x2="1" y2="1"><stop stopColor="#4ebaff"/><stop offset="1" stopColor="#556ef0"/></linearGradient><linearGradient id={`${id}tile2`} x2="1" y2="1"><stop stopColor="#ff88c1"/><stop offset="1" stopColor="#dc4fba"/></linearGradient></defs><ellipse cx="80" cy="86" rx="55" ry="8" fill="#645998" opacity=".14"/><g stroke="white" strokeWidth="3"><rect x="19" y="32" width="47" height="43" rx="10" fill={`url(#${id}tile)`} transform="rotate(-11 42 53)"/><rect x="56" y="24" width="48" height="48" rx="10" fill={`url(#${id}tile2)`} transform="rotate(4 80 48)"/><rect x="96" y="35" width="45" height="40" rx="10" fill="#ffbd42" transform="rotate(12 118 55)"/></g><path d="M30 48h24m-20 9h17M67 41h25m-24 9h15m27 1h19m-18 8h14" stroke="white" strokeWidth="4" strokeLinecap="round"/><path d="m34 19 3 6 7 1-5 5 1 7-6-4-6 3 2-6-5-5 7-1z" fill="#ffe76f"/><circle cx="126" cy="20" r="4" fill="#80dfb3"/></svg>;
 }
 
-export function GameCategoryArt({ name }: { name: "all" | "word" | "math" | "memory" | "puzzle" | "logic" }) {
+export function GameCategoryArt({ name }: { name: "all" | "word" | "math" | "memory" | "puzzle" | "logic" | "challenges" }) {
   const common = { width: 29, height: 29, viewBox: "0 0 32 32", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true as const };
   if (name === "all") return <svg {...common}><path d="M16 3.5 19.7 12l8.8 1.2-6.4 6.1 1.5 8.7-7.6-4.1-7.8 4.1 1.5-8.7-6.3-6.1 8.8-1.2z" fill="currentColor" stroke="none"/><circle cx="13.5" cy="16" r=".9" fill="white" stroke="none"/><circle cx="18.5" cy="16" r=".9" fill="white" stroke="none"/><path d="M14 19q2 2 4 0" stroke="white"/></svg>;
   if (name === "word") return <svg {...common}><path d="M6 5.5h20v19H6z"/><path d="M16 6v18M9.5 11h3m-3 4h3m7-4h3m-3 4h3M10 20h3m7 0h3"/><path d="m8 3 2 2m14-2-2 2"/></svg>;
   if (name === "math") return <svg {...common}><rect x="5" y="4" width="22" height="24" rx="5"/><path d="M10 10h12M11 16h3m7 0h1m-11 6h3m7 0h1"/><path d="M18 15v3m-1.5-1.5h3"/></svg>;
   if (name === "memory") return <svg {...common}><rect x="5" y="7" width="15" height="19" rx="3"/><rect x="12" y="4" width="15" height="19" rx="3"/><path d="m19.5 9 1.4 2.8 3.1.5-2.2 2.1.5 3-2.8-1.5-2.7 1.5.5-3-2.3-2.1 3.1-.5z" fill="currentColor" stroke="none"/></svg>;
   if (name === "puzzle") return <svg {...common}><path d="M5 6h8c-1.5-4 5.5-5 5.5 0H27v8c4-1.5 5 5.5 0 5.5V27h-8c1.5 4-5.5 5-5.5 0H5v-8c-4 1.5-5-5.5 0-5.5z"/></svg>;
+  if (name === "challenges") return <svg {...common}><path d="M18 3 8.5 18h6l-1 11L24 13h-6.5z" fill="currentColor" stroke="none"/><path d="M25.5 5.5v4m-2-2h4M6.5 23v3m-1.5-1.5h3"/></svg>;
   return <svg {...common}><circle cx="13.5" cy="13.5" r="8"/><path d="m19.5 19.5 7 7m-13-17v8m-4-4h8"/><circle cx="13.5" cy="13.5" r="2" fill="currentColor" stroke="none"/></svg>;
 }
 

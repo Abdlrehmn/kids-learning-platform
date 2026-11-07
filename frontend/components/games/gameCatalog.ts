@@ -1,5 +1,8 @@
 import type { GameArtKind } from "@/components/games/GameWorldArt";
 
+// Raw game definitions. Counting, statuses, duplicate review, and category
+// accounting were derived from this file exclusively in ./gameRegistry.ts —
+// never hardcode a game total or status anywhere else.
 export const games = [
   { id: "word-match", title: "Word Match", icon: "🔗", mechanic: "Match a picture with its word.", instruction: "Look at the picture and choose the matching word." },
   { id: "picture-match", title: "Picture Word Match", icon: "🖼️", mechanic: "Connect a picture with its word.", instruction: "Look at the picture and tap the matching word." },
@@ -79,14 +82,14 @@ export const categories = [
 export const popularGameIds: GameId[] = ["word-match", "spelling-bee", "memory-cards", "math-adventure", "noun-detective", "sentence-builder"];
 
 export const gameArtById: Record<GameId, GameArtKind> = {
-  "word-match": "word-match", "picture-match": "picture-match", "color-match": "color-palette", "spelling-bee": "spelling-bee",
-  "missing-letters": "letter-tiles", "word-scramble": "letter-tiles", "memory-cards": "memory-cards", "vocabulary-quiz": "letter-tiles",
+  "word-match": "letter-tiles", "picture-match": "picture-match", "color-match": "color-palette", "spelling-bee": "spelling-bee",
+  "missing-letters": "alphabet", "word-scramble": "letter-tiles", "memory-cards": "memory-cards", "vocabulary-quiz": "letter-tiles",
   "noun-detective": "noun-detective", "verb-action": "action", "adjective-explorer": "color-palette", "sentence-builder": "sentence-builder",
   "treasure-hunt": "treasure-map", "punctuation-fixer": "punctuation", "story-sequence": "sequence", "listening-detective": "sound-wave",
   "word-sorting": "sorting", "odd-one-out": "odd-one-out", crossword: "crossword", "guess-the-word": "alphabet", "build-a-sentence": "sentence-builder",
-  "alphabet-hunt": "alphabet", "math-adventure": "number-stacks", "number-quest": "number-stacks", "addition-adventure": "addition", "subtraction-challenge": "subtraction", "multiplication-stars": "multiplication", "division-explorer": "division", "shape-detective": "shapes", "counting-adventure": "counting", "number-sequence": "sequence",
+  "alphabet-hunt": "alphabet", "math-adventure": "number-stacks", "number-quest": "sequence", "addition-adventure": "addition", "subtraction-challenge": "subtraction", "multiplication-stars": "multiplication", "division-explorer": "division", "shape-detective": "shapes", "counting-adventure": "counting", "number-sequence": "sequence",
   "picture-pairs": "memory-cards", "word-memory": "letter-tiles", "sound-memory": "sound-wave", "sequence-memory": "sequence", "animal-match": "animal-cards",
-  "jigsaw-puzzle": "word-match", "picture-puzzle": "picture-match", "missing-piece": "sequence", "shape-builder": "house", "letter-puzzle": "letter-tiles", "pattern-builder": "sequence",
+  "jigsaw-puzzle": "word-match", "picture-puzzle": "picture-match", "missing-piece": "shapes", "shape-builder": "house", "letter-puzzle": "letter-tiles", "pattern-builder": "sorting",
   "find-difference": "noun-detective", "pattern-detective": "sequence", "object-sorting": "sorting", "logic-quest": "treasure-map",
 };
 

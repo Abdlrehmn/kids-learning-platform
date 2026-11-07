@@ -2,6 +2,7 @@
 
 import { GameCategoryArt, RewardTrophy } from "@/components/games/GameWorldArt";
 import type { CategoryId } from "@/components/games/gameCatalog";
+import { categoryCountHints } from "@/components/games/gameRegistry";
 
 type SidebarCategory = { id: CategoryId; title: string; subtitle: string; tint: string };
 
@@ -34,7 +35,13 @@ export default function GameSidebar({ categories, counts, selected, onSelect }: 
                 <b>{category.title}</b>
                 <small>{category.subtitle}</small>
               </span>
-              <span className="games-category-count" aria-label={`${counts[category.id]} games`}>{counts[category.id]}</span>
+              <span
+                className="games-category-count"
+                aria-label={`${counts[category.id]} games`}
+                title={categoryCountHints[category.id]
+                  ? `${counts[category.id]} ${categoryCountHints[category.id]}`
+                  : `${counts[category.id]} games`}
+              >{counts[category.id]}</span>
             </button>
           );
         })}

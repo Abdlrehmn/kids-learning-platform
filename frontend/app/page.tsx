@@ -9,6 +9,7 @@ import SparkleTrail from "@/components/SparkleTrail";
 import WorldNavigation from "@/components/WorldNavigation";
 import ConfettiLink from "@/components/ConfettiLink";
 import HideAndSeekShow from "@/components/HideAndSeekShow";
+import { playableGameCount } from "@/components/games/gameRegistry";
 
 function BouncyLetters({ text, offset = 0 }: { text: string; offset?: number }) {
   return Array.from(text).map((letter, index) => (
@@ -51,7 +52,7 @@ const learningZones = [
     id: "games",
     title: "Learning Games",
     subtitle: "Play, practise & grow",
-    description: "Explore vocabulary, grammar, spelling, listening, and story games.",
+    description: "Explore vocabulary, math, memory, puzzle, and logic games.",
     symbol: "game",
     color: "games",
     state: "Ready to play",
@@ -59,9 +60,9 @@ const learningZones = [
   },
   {
     id: "rewards",
-    title: "Puzzle Quest",
-    subtitle: "Play, solve & earn rewards",
-    description: "Your practice results are shown during typing sessions; saved rewards are not available yet.",
+    title: "Rewards",
+    subtitle: "Stars, badges & level ups",
+    description: "Stars and badges from English, Typing, and Games will all be collected here soon.",
     symbol: "treasure",
     color: "rewards",
     state: "Coming soon",
@@ -169,7 +170,7 @@ export default function Home() {
             <span className="space-benefit-divider" aria-hidden="true" />
             <div className="space-benefit">
               <span className="space-benefit-badge space-benefit-badge--game"><BenefitIcon kind="game" /></span>
-              <span><strong>Play Games</strong><small>Twenty learning games</small></span>
+              <span><strong>Play Games</strong><small>{playableGameCount} learning games</small></span>
             </div>
             <span className="space-benefit-divider" aria-hidden="true" />
             <div className="space-benefit">

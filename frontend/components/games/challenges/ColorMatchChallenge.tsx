@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { colorMatchPalette, type ColorMatchQuestion } from "@/components/games/colorMatchContent";
 import { ROUNDS_PER_LEVEL } from "@/components/games/gameEngine";
 import GameFeedback from "@/components/games/challenges/GameFeedback";
@@ -14,10 +14,12 @@ export default function ColorMatchChallenge({ question, round, onCorrect, onNext
   const [status, setStatus] = useState<"idle" | "right" | "wrong">("idle");
   const [feedback, setFeedback] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const correctAwardedRef = useRef(false);
   const choose = (color: string) => {
-    if (status === "right") return;
+    if (status === "right" || correctAwardedRef.current) return;
     setSelected(color);
     if (color === question.color) {
+      correctAwardedRef.current = true;
       setStatus("right");
       setFeedback(`Yes! A ${question.object} is ${question.color}.`);
       onCorrect();
@@ -26,7 +28,7 @@ export default function ColorMatchChallenge({ question, round, onCorrect, onNext
       setFeedback(`A ${question.object} is not ${color}. Look at the colors and try again.`);
     }
   };
-  const retry = () => { setStatus("idle"); setFeedback(""); setSelected(null); };
+  const retry = () => { correctAwardedRef.current = false; setStatus("idle"); setFeedback(""); setSelected(null); };
 
   return (
     <div className="game-round">

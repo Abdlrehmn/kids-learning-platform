@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ColorMatchChallenge from "@/components/games/challenges/ColorMatchChallenge";
 import GameChallenge from "@/components/games/challenges/GameChallenge";
 import { colorMatchQuestions } from "@/components/games/colorMatchContent";
@@ -19,12 +19,16 @@ export default function GameSession({ game, saved, onBack, onFinish }: {
   const [score, setScore] = useState(0);
   const [levelComplete, setLevelComplete] = useState(false);
   const [runId, setRunId] = useState(0);
+  const advancedRoundRef = useRef<string | null>(null);
   const target = game.id === "color-match" ? null : getTarget(game.id, level, round);
   const colorQuestion = game.id === "color-match"
     ? colorMatchQuestions[(gameSeed(game.id) + (level - 1) * 7 + round * 5) % colorMatchQuestions.length]
     : null;
 
   const advance = () => {
+    const roundKey = `${runId}-${level}-${round}`;
+    if (advancedRoundRef.current === roundKey) return;
+    advancedRoundRef.current = roundKey;
     if (round === ROUNDS_PER_LEVEL - 1) {
       setLevelComplete(true);
       onFinish(game.id, level, score);

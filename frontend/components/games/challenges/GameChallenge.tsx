@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { sentencePrompts, stories, wordSets, type WordCard } from "@/components/english/englishContent";
 import type { GameId } from "@/components/games/gameCatalog";
 import {
@@ -17,6 +17,7 @@ import {
 import GameFeedback from "@/components/games/challenges/GameFeedback";
 import MathGameChallenge from "@/components/games/challenges/MathGameChallenge";
 import SequenceMemoryChallenge from "@/components/games/challenges/SequenceMemoryChallenge";
+import { createWordQuestion, isWordAnswerCorrect } from "@/components/games/wordQuestions";
 
 export default function GameChallenge({ gameId, gameTitle, instruction, target, level, round, onCorrect, onNext }: {
   gameId: GameId;
@@ -36,11 +37,17 @@ export default function GameChallenge({ gameId, gameTitle, instruction, target, 
   const [memoryOpen, setMemoryOpen] = useState<string[]>([]);
   const [memoryError, setMemoryError] = useState(false);
   const [memoryAttempts, setMemoryAttempts] = useState(0);
+  const correctAwardedRef = useRef(false);
 
   const choices = useMemo(() => getWordChoices(target, gameId, level, round), [target, gameId, level, round]);
+  const wordQuestion = useMemo(
+    () => createWordQuestion(target, choices, gameId, level, round),
+    [target, choices, gameId, level, round],
+  );
   const check = (isCorrect: boolean, success: string, retry: string) => {
-    if (status === "right") return;
+    if (status === "right" || correctAwardedRef.current) return;
     if (isCorrect) {
+      correctAwardedRef.current = true;
       setStatus("right");
       setFeedback(success);
       onCorrect();
@@ -49,10 +56,14 @@ export default function GameChallenge({ gameId, gameTitle, instruction, target, 
       setFeedback(retry);
     }
   };
-  const retry = () => { setStatus("idle"); setFeedback(""); setAnswer(""); setSelected([]); };
+  const retry = () => { correctAwardedRef.current = false; setStatus("idle"); setFeedback(""); setAnswer(""); setSelected([]); };
   const choose = (value: string, expected: string, success: string, retry: string) => {
     setAnswer(value);
     check(value === expected, success, retry);
+  };
+  const chooseWordOption = (optionId: string, success: string, retryMessage: string) => {
+    setAnswer(optionId);
+    check(isWordAnswerCorrect(wordQuestion, optionId), success, retryMessage);
   };
   const playAudio = () => {
     if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
@@ -137,12 +148,14 @@ export default function GameChallenge({ gameId, gameTitle, instruction, target, 
   const targetAdjective = adjectiveWords[(round + level) % adjectiveWords.length];
   const sentenceChoices = [targetVerb, "pencil", "bright", "gently"];
   const findAdjectiveChoices = [targetAdjective, "puppy", "runs", "softly"];
-  const nameChoices: Choice[] = choices.map((word) => ({ label: word.word, value: word.word, picture: word.picture, colorHex: word.colorHex }));
+  const nameChoices: (Choice & { id: string })[] = choices.map((word) => ({ id: word.id, label: word.word, value: word.word, picture: word.picture, colorHex: word.colorHex }));
 
   const titleLine = <div className="game-question-heading"><small>Round {round + 1} of {ROUNDS_PER_LEVEL}</small><h3>{gameTitle}</h3><p>{instruction}</p></div>;
-  const textChoices = (items: string[], expected: string, success: string, retry: string) => (
-    <div className="game-choice-grid">{items.map((item) => <button type="button" key={item} className={`game-choice${answer === item ? " is-selected" : ""}`} disabled={status === "right"} onClick={() => choose(item, expected, success, retry)}>{item}</button>)}</div>
-  );
+  const textChoices = (items: string[], expected: string, success: string, retry: string) => {
+    const options = shuffle(items, gameSeed(`${gameId}-${level}-${round}-${items.join("|")}`));
+    if (options.length > 1 && options[0] === expected) [options[0], options[1]] = [options[1], options[0]];
+    return <div className="game-choice-grid">{options.map((item) => <button type="button" key={item} className={`game-choice${answer === item ? " is-selected" : ""}`} disabled={status === "right"} onClick={() => choose(item, expected, success, retry)}>{item}</button>)}</div>;
+  };
 
   if (["math-adventure", "number-quest", "addition-adventure", "subtraction-challenge", "multiplication-stars", "division-explorer", "shape-detective", "counting-adventure", "number-sequence"].includes(gameId)) {
     return <MathGameChallenge gameId={gameId} level={level} round={round} instruction={instruction} onCorrect={onCorrect} onNext={onNext} />;
@@ -165,8 +178,22 @@ export default function GameChallenge({ gameId, gameTitle, instruction, target, 
     return <div className="game-round">{titleLine}<div className="game-alphabet-target">{letter}<small>Find a picture that starts with this letter</small></div><div className="game-choice-grid">{firstLetterChoices.map((word) => <button type="button" key={word.id} className="game-choice game-choice--picture" disabled={status === "right"} onClick={() => choose(word.word, target.word, "You found the right beginning sound!", "Say the word slowly and listen to its first sound.")}>{word.picture}<b>{word.word}</b></button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
   }
 
-  if (["jigsaw-puzzle", "picture-puzzle"].includes(gameId)) {
-    return <div className="game-round">{titleLine}<div className="game-picture-prompt"><span aria-hidden="true">{target.picture}</span><small>{gameId === "jigsaw-puzzle" ? "Which puzzle piece completes this picture?" : "Choose the word that matches the picture."}</small></div><div className="game-choice-grid">{choices.map((word) => <button type="button" key={word.id} className="game-choice game-choice--picture" disabled={status === "right"} onClick={() => choose(word.word, target.word, "You found the matching puzzle piece!", "That piece belongs to another picture. Try again.")}>{word.picture}<b>{word.word}</b></button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+  if (gameId === "jigsaw-puzzle") {
+    const chunks = target.word.toLocaleUpperCase().match(/.{1,2}/g) ?? [];
+    const pieces = shuffle(chunks.map((chunk, index) => ({ chunk, id: String(index) })), gameSeed(gameId) + level + round);
+    const placePiece = (pieceId: string) => {
+      const next = [...selected, pieceId];
+      setSelected(next);
+      if (next.length === pieces.length) {
+        const assembled = next.map((index) => chunks[Number(index)]).join("").toLocaleLowerCase();
+        check(assembled === target.word.toLocaleLowerCase(), "You fitted the word pieces together!", "Those pieces are out of order. Try again.");
+      }
+    };
+    return <div className="game-round">{titleLine}<div className="game-jigsaw-picture" aria-label="Picture clue">{target.picture}</div><p className="game-clue">Fit the letter pieces together to spell the picture.</p><div className="game-jigsaw-board" aria-live="polite">{chunks.map((_, index) => <span key={index}>{selected[index] === undefined ? "_" : chunks[Number(selected[index])]}</span>)}</div><div className="game-jigsaw-pieces">{pieces.map((piece) => <button type="button" key={piece.id} disabled={selected.includes(piece.id) || status === "right"} onClick={() => placePiece(piece.id)}>{piece.chunk}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+  }
+
+  if (gameId === "picture-puzzle") {
+    return <div className="game-round">{titleLine}<div className="game-picture-prompt"><span role="img" aria-label={wordQuestion.imageAlt}>{wordQuestion.image}</span><small>{wordQuestion.prompt}</small></div><div className="game-choice-grid">{wordQuestion.options.map((option) => <button type="button" key={option.id} className={`game-choice game-choice--picture${answer === option.id ? " is-selected" : ""}`} disabled={status === "right"} onClick={() => chooseWordOption(option.id, "You found the matching word!", "Look closely at the picture and try another word.")}>{option.text}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>
   }
 
   if (gameId === "letter-puzzle") {
@@ -176,13 +203,38 @@ export default function GameChallenge({ gameId, gameTitle, instruction, target, 
     return <div className="game-round">{titleLine}<span className="game-big-picture" aria-hidden="true">{target.picture}</span><p className="game-clue">Which letter starts the word <b>{target.word}</b>?</p>{textChoices(letterChoices, letter, "You found the first letter!", "Say the word slowly and listen for its first letter.")}{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
   }
 
-  if (["missing-piece", "pattern-builder", "pattern-detective"].includes(gameId)) {
+  if (gameId === "pattern-detective") {
+    const sequences = [
+      { tiles: ["2", "4", "6", "8", "?"], answer: "10", options: ["10", "9", "12", "14"] },
+      { tiles: ["5", "10", "15", "20", "?"], answer: "25", options: ["25", "22", "30", "35"] },
+      { tiles: ["3", "6", "9", "12", "?"], answer: "15", options: ["15", "14", "18", "21"] },
+      { tiles: ["10", "20", "30", "40", "?"], answer: "50", options: ["50", "45", "60", "70"] },
+      { tiles: ["1", "3", "5", "7", "?"], answer: "9", options: ["9", "8", "10", "12"] },
+    ];
+    const sequence = sequences[(level + round) % sequences.length];
+    return <div className="game-round">{titleLine}<div className="game-pattern-tiles">{sequence.tiles.map((tile, index) => <span key={`${tile}-${index}`} className={tile === "?" ? "is-missing" : ""}>{tile}</span>)}</div><p className="game-clue">Count forward by the same amount each time. What comes next?</p>{textChoices(sequence.options, sequence.answer, "You spotted the number pattern!", "Check how much the numbers grow each time.")}{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+  }
+
+  if (gameId === "pattern-builder") {
+    const sequences = [
+      { tiles: ["A", "B", "B", "A", "B", "?"], answer: "B", options: ["B", "A", "C", "D"] },
+      { tiles: ["1", "2", "1", "2", "?"], answer: "1", options: ["1", "2", "3", "4"] },
+      { tiles: ["A", "A", "B", "A", "A", "?"], answer: "B", options: ["B", "A", "C", "D"] },
+      { tiles: ["2", "3", "4", "2", "3", "?"], answer: "4", options: ["4", "2", "3", "5"] },
+      { tiles: ["🟡", "🟢", "🟡", "🟢", "?"], answer: "🟡", options: ["🟡", "🟢", "🔵", "🔴"] },
+    ];
+    const sequence = sequences[(level + round) % sequences.length];
+    return <div className="game-round">{titleLine}<div className="game-pattern-tiles">{sequence.tiles.map((tile, index) => <span key={`${tile}-${index}`} className={tile === "?" ? "is-missing" : ""}>{tile}</span>)}</div><p className="game-clue">Finish the repeating pattern.</p>{textChoices(sequence.options, sequence.answer, "You finished the pattern!", "Look for the part that repeats.")}{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+  }
+
+  if (gameId === "missing-piece") {
     const patterns = [
       { tiles: ["🔴", "🔵", "🔴", "🔵", "?"], answer: "🔴", options: ["🔴", "🔵", "🟡", "🟢"] },
       { tiles: ["⭐", "⭐", "🌙", "⭐", "⭐", "?"], answer: "🌙", options: ["🌙", "⭐", "☀️", "☁️"] },
       { tiles: ["▲", "■", "●", "▲", "■", "?"], answer: "●", options: ["●", "■", "▲", "★"] },
       { tiles: ["🍎", "🍌", "🍌", "🍎", "🍌", "🍌", "?"], answer: "🍎", options: ["🍎", "🍌", "🍇", "🍊"] },
     ];
+    patterns.push({ tiles: ["A", "B", "A", "B", "?"], answer: "A", options: ["A", "B", "C", "D"] });
     const pattern = patterns[(level + round + gameSeed(gameId)) % patterns.length];
     return <div className="game-round">{titleLine}<div className="game-pattern-tiles">{pattern.tiles.map((tile, index) => <span key={`${tile}-${index}`} className={tile === "?" ? "is-missing" : ""}>{tile}</span>)}</div><p className="game-clue">{gameId === "missing-piece" ? "Find the piece that is missing." : "What comes next in the pattern?"}</p>{textChoices(pattern.options, pattern.answer, "You completed the pattern!", "Look at what repeats and try again.")}{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
   }
@@ -242,17 +294,17 @@ export default function GameChallenge({ gameId, gameTitle, instruction, target, 
 
   if (gameId === "vocabulary-quiz") {
     const sentenceClue = target.sentence.toLocaleLowerCase().replace(target.word.toLocaleLowerCase(), "_____");
-    const quizWords = getWordChoices(target, gameId, level, round).map((word) => word.word);
-    return <div className="game-round">{titleLine}<p className="game-clue">Choose the word that completes the sentence:</p><p className="game-clue game-clue--sentence">{sentenceClue}</p>{textChoices(quizWords, target.word, "That word completes the idea!", "Read the sentence and try another word.")}{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+
+    return <div className="game-round">{titleLine}<p className="game-clue">Choose the word that completes the sentence:</p><p className="game-clue game-clue--sentence">{sentenceClue}</p><div className="game-choice-grid">{wordQuestion.options.map((option) => <button type="button" key={option.id} className={`game-choice${answer === option.id ? " is-selected" : ""}`} disabled={status === "right"} onClick={() => chooseWordOption(option.id, "That word completes the idea!", "Read the sentence and try another word.")}>{option.text}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
   }
 
   if (gameId === "word-sorting" || gameId === "treasure-hunt" || gameId === "object-sorting") {
     const expectedTopic = getWordTopic(target);
-    const topics = [...new Set(uniqueWords.map((word) => word.topic).filter((topic): topic is string => Boolean(topic)))];
+    const topics = [...new Set(uniqueWords.map(getWordTopic))];
     const topicOptions = shuffle([expectedTopic, ...topics.filter((topic) => topic !== expectedTopic).slice(0, 3)], gameSeed(gameId) + round + level);
-    const topicWords = uniqueWords.filter((word) => word.topic === expectedTopic);
+    const topicWords = uniqueWords.filter((word) => getWordTopic(word) === expectedTopic);
     const huntTarget = topicWords[(round + level) % Math.max(1, topicWords.length)] ?? target;
-    const huntChoices = shuffle([huntTarget, ...uniqueWords.filter((word) => word.topic !== expectedTopic).slice((round + level) % 40, (round + level) % 40 + 8)], gameSeed(gameId) + round + level);
+    const huntChoices = shuffle([huntTarget, ...uniqueWords.filter((word) => getWordTopic(word) !== expectedTopic).slice((round + level) % 40, (round + level) % 40 + 8)], gameSeed(gameId) + round + level);
     const options = gameId === "treasure-hunt" ? huntChoices.map((word) => ({ label: `${word.picture} ${word.word}`, value: word.word })) : topicOptions.map((topic) => ({ label: topic, value: topic }));
     const expectedValue = gameId === "treasure-hunt" ? huntTarget.word : expectedTopic;
     return <div className="game-round">{titleLine}<p className="game-clue">{gameId === "treasure-hunt" ? `Find a ${expectedTopic.toLocaleLowerCase()} word in the treasure grid.` : <>Sort <b>{target.word}</b> into its topic.</>}</p><div className={`game-choice-grid${gameId === "treasure-hunt" ? " game-choice-grid--treasure" : ""}`}>{options.map((option) => <button type="button" key={option.value} className={`game-choice${answer === option.value ? " is-selected" : ""}`} disabled={status === "right"} onClick={() => choose(option.value, expectedValue, "You found the right word group!", "That word belongs to another group. Try again.")}>{option.label}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
@@ -300,15 +352,15 @@ export default function GameChallenge({ gameId, gameTitle, instruction, target, 
   }
 
   if (gameId === "listening-detective") {
-    return <div className="game-round">{titleLine}<button type="button" className="games-listen-button" onClick={playAudio}>🔊 Play the word</button><p className="game-clue">Listen, then choose what you heard.</p><div className="game-choice-grid">{nameChoices.map((choice) => <button type="button" key={choice.value} className="game-picture-choice" disabled={status === "right"} onClick={() => choose(choice.value, target.word, "You heard the word!", "Listen again and try another word.")}>{choice.colorHex ? <span className="game-color-swatch" style={{ "--game-swatch": choice.colorHex } as React.CSSProperties} aria-hidden="true" /> : <span aria-hidden="true">{choice.picture}</span>}<b>{choice.label}</b></button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+    return <div className="game-round">{titleLine}<button type="button" className="games-listen-button" onClick={playAudio}>Play the word</button><p className="game-clue">Listen, then choose what you heard.</p><div className="game-choice-grid">{wordQuestion.options.map((option) => <button type="button" key={option.id} className={`game-choice${answer === option.id ? " is-selected" : ""}`} disabled={status === "right"} onClick={() => chooseWordOption(option.id, "You heard the word!", "Listen again and try another word.")}>{option.text}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>
   }
 
   if (gameId === "picture-match") {
-    return <div className="game-round">{titleLine}{target.colorHex ? <span className="game-color-swatch game-color-swatch--large" style={{ "--game-swatch": target.colorHex } as React.CSSProperties} aria-hidden="true" /> : <span className="game-big-picture" aria-hidden="true">{target.picture}</span>}<p className="game-clue">Which word matches this picture?</p><div className="game-choice-grid">{nameChoices.map((choice) => <button type="button" key={choice.value} className="game-choice" disabled={status === "right"} onClick={() => choose(choice.value, target.word, "That picture and word match!", "Look closely at the picture and try again.")}>{choice.label}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+    return <div className="game-round">{titleLine}{target.colorHex ? <span className="game-color-swatch game-color-swatch--large" style={{ "--game-swatch": target.colorHex } as React.CSSProperties} aria-hidden="true" /> : <span className="game-big-picture" aria-hidden="true">{wordQuestion.image}</span>}<p className="game-clue">{wordQuestion.prompt}</p><div className="game-choice-grid">{nameChoices.map((choice) => <button type="button" key={choice.id} className="game-choice" disabled={status === "right"} onClick={() => chooseWordOption(choice.id, "That picture and word match!", "Look closely at the picture and try again.")}>{choice.label}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
   }
 
   if (gameId === "word-match") {
-    return <div className="game-round">{titleLine}<div className="game-picture-prompt"><span aria-hidden="true">{target.colorHex ? <span className="game-color-swatch game-color-swatch--large" style={{ "--game-swatch": target.colorHex } as React.CSSProperties} /> : target.picture}</span><small>Which word matches this picture?</small></div><div className="game-choice-grid">{choices.map((choice) => <button type="button" key={choice.id} className="game-choice game-choice--picture" disabled={status === "right"} onClick={() => choose(choice.word, target.word, "That picture and word match!", "Look closely at the picture and try another word.")}>{choice.word}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
+    return <div className="game-round">{titleLine}<div className="game-picture-prompt"><span aria-hidden="true">{target.colorHex ? <span className="game-color-swatch game-color-swatch--large" style={{ "--game-swatch": target.colorHex } as React.CSSProperties} /> : wordQuestion.image}</span><small>{wordQuestion.prompt}</small></div><div className="game-choice-grid">{wordQuestion.options.map((option) => <button type="button" key={option.id} className={`game-choice game-choice--picture${answer === option.id ? " is-selected" : ""}`} disabled={status === "right"} onClick={() => chooseWordOption(option.id, "That picture and word match!", "Look closely at the picture and try another word.")}>{option.text}</button>)}</div>{status !== "idle" && <GameFeedback feedback={feedback} onNext={onNext} onRetry={retry} isCorrect={status === "right"} />}</div>;
   }
 
   const topic = getWordTopic(target);

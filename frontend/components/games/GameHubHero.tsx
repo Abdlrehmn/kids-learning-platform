@@ -1,15 +1,11 @@
 "use client";
 
-import dynamic from "next/dynamic";
-
-const GamesWorldScene = dynamic(() => import("@/components/games/GamesWorldScene"), { ssr: false });
+import GameHeroIllustration from "@/components/games/GameHeroIllustration";
 
 export default function GameHubHero({ gameCount, xp, ready }: { gameCount: number; xp: number; ready: boolean }) {
   return (
     <header className="games-hero">
-      <div className="games-sky" aria-hidden="true">
-        <GamesWorldScene mode="hero" />
-      </div>
+      <GameHeroIllustration className="games-hero-illustration" />
 
       <div className="games-hero-copy">
         <p className="games-hero-kicker"><span aria-hidden="true">✦</span> Welcome to the arcade <span aria-hidden="true">✦</span></p>
@@ -20,10 +16,6 @@ export default function GameHubHero({ gameCount, xp, ready }: { gameCount: numbe
           <a className="games-hero-button" href="#games-collection">Explore all games <span aria-hidden="true">↓</span></a>
           <span className="games-hero-count"><b>{gameCount}</b> Amazing Educational Games</span>
         </div>
-      </div>
-
-      <div className="games-hero-sign" aria-hidden="true">
-        <span>Learn While You Play!</span>
       </div>
 
       <div className="games-xp" aria-label={ready ? `${xp} XP earned` : "Loading your XP"}>

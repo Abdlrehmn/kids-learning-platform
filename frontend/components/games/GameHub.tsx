@@ -12,11 +12,11 @@ import {
   categories,
   categoryTitle,
   featuredGameIdByCategory,
-  gameCategories,
   games,
   type CategoryId,
   type GameId,
 } from "@/components/games/gameCatalog";
+import { gameIsInCategory, categoryCounts, playableGameCount, primaryCategoryOf } from "@/components/games/gameRegistry";
 import { gameMeta, type DifficultyFilter } from "@/components/games/gameMeta";
 import {
   EMPTY_PROGRESS,
@@ -94,37 +94,17 @@ export default function GameHub() {
     window.requestAnimationFrame(scrollToGames);
   };
 
-  const categoryCounts = useMemo(() => {
-    const counts: Record<CategoryId, number> = {
-      all: games.length,
-      word: 0,
-      math: 0,
-      memory: 0,
-      puzzle: 0,
-      logic: 0,
-      challenges: 0,
-    };
-    for (const game of games) {
-      counts[gameCategories[game.id]] += 1;
-      if (gameMeta[game.id].challenge) counts.challenges += 1;
-    }
-    return counts;
-  }, []);
-
+  // Counts are derived from the central registry; see gameRegistry.ts.
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleGames = useMemo(() => games.filter((game) => {
-    const inCategory = selectedCategory === "all"
-      || (selectedCategory === "challenges"
-        ? Boolean(gameMeta[game.id].challenge)
-        : gameCategories[game.id] === selectedCategory);
-    if (!inCategory) return false;
+    if (!gameIsInCategory(game.id, selectedCategory)) return false;
     if (difficulty !== "all" && gameMeta[game.id].difficulty !== difficulty) return false;
     if (!normalizedQuery) return true;
     const searchable = [
       game.title,
       game.mechanic,
       game.instruction,
-      categoryTitle(gameCategories[game.id]),
+      categoryTitle(primaryCategoryOf(game.id)),
       gameMeta[game.id].difficulty,
     ].join(" ").toLocaleLowerCase();
     return searchable.includes(normalizedQuery);
@@ -144,8 +124,8 @@ export default function GameHub() {
   return (
     <div className="english-world games-world">
       <WorldNavigation active="games" />
-      <main className="games-main">
-        <GameHubHero gameCount={games.length} xp={progress.xp} ready={ready} />
+      <main className="games-main" id="games-world-top">
+        <GameHubHero gameCount={playableGameCount} xp={progress.xp} ready={ready} />
 
         {activeGame ? (
           <div className="games-session-wrap" ref={sessionRef}>
@@ -169,7 +149,7 @@ export default function GameHub() {
             <div className="games-library">
               <header className="games-library-head">
                 <div>
-                  <p className="games-eyebrow"><span aria-hidden="true">✦</span> {games.length} games to explore</p>
+                  <p className="games-eyebrow"><span aria-hidden="true">✦</span> {playableGameCount} games to explore</p>
                   <h2 id="games-library-title">Games Collection</h2>
                   <p>Pick a game, press play, and learn something new.</p>
                 </div>
@@ -213,6 +193,10 @@ export default function GameHub() {
           </section>
         )}
       </main>
+      <footer className="games-footer" aria-label="Games World footer">
+        <p><b>KiddoWorld</b><span>Learn · Type · Play · Grow</span></p>
+        <a href="#games-world-top">Back to top <span aria-hidden="true">↑</span></a>
+      </footer>
     </div>
   );
 }

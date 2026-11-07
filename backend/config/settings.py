@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+from email.utils import parseaddr
+from urllib.parse import parse_qs, unquote, urlparse
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -21,12 +23,103 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # Require deployment security settings through the environment; local development can opt in.
-DEBUG = os.environ.get("DJANGO_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}
+_debug_value = os.environ.get("DJANGO_DEBUG", "false").strip().lower()
+if _debug_value not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
+    raise RuntimeError("DJANGO_DEBUG must be a boolean value.")
+DEBUG = _debug_value in {"1", "true", "yes", "on"}
+DJANGO_ENVIRONMENT = os.environ.get("DJANGO_ENVIRONMENT", "development").strip().lower()
+if DJANGO_ENVIRONMENT not in {"development", "test", "staging", "production"}:
+    raise RuntimeError("DJANGO_ENVIRONMENT must be development, test, staging, or production.")
+if DJANGO_ENVIRONMENT == "production" and DEBUG:
+    raise RuntimeError("DJANGO_DEBUG cannot be enabled when DJANGO_ENVIRONMENT is production.")
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "").strip()
 if not SECRET_KEY:
     if not DEBUG:
         raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is disabled.")
     SECRET_KEY = "django-insecure-local-development-only-do-not-deploy"
+
+
+def _parse_database_url(value, *, debug):
+    if not value:
+        if debug:
+            return {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+        raise RuntimeError("DATABASE_URL must point to PostgreSQL when DJANGO_DEBUG is disabled.")
+    try:
+        parsed = urlparse(value)
+        port = parsed.port or ""
+    except ValueError as exc:
+        raise RuntimeError("DATABASE_URL is malformed; check its hostname, port, and URL encoding.") from exc
+    if parsed.scheme in {"postgres", "postgresql"}:
+        database_name = unquote(parsed.path.lstrip("/"))
+        if not parsed.hostname or not database_name or not parsed.username:
+            raise RuntimeError("PostgreSQL DATABASE_URL must include a username, host, and database name.")
+        query = parse_qs(parsed.query)
+        sslmode = os.environ.get("DB_SSLMODE", query.get("sslmode", ["require" if not debug else "prefer"])[0])
+        valid_ssl_modes = {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}
+        if sslmode not in valid_ssl_modes:
+            raise RuntimeError("DB_SSLMODE must be a PostgreSQL sslmode value.")
+        if not debug and sslmode not in {"require", "verify-ca", "verify-full"}:
+            raise RuntimeError("Production PostgreSQL must use an encrypted DB_SSLMODE.")
+        return {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": database_name,
+                "USER": unquote(parsed.username),
+                "PASSWORD": unquote(parsed.password or ""),
+                "HOST": parsed.hostname,
+                "PORT": port,
+                "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+                "OPTIONS": {"sslmode": sslmode},
+            }
+        }
+    if parsed.scheme == "sqlite" and debug:
+        sqlite_name = unquote(parsed.path)
+        if sqlite_name.startswith("/") and os.name == "nt":
+            sqlite_name = sqlite_name.lstrip("/")
+        if not sqlite_name:
+            raise RuntimeError("SQLite DATABASE_URL must include a database path.")
+        return {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": sqlite_name}}
+    if parsed.scheme == "sqlite":
+        raise RuntimeError("Production DATABASE_URL must use PostgreSQL.")
+    raise RuntimeError("DATABASE_URL must use postgres://, postgresql://, or (for development) sqlite://.")
+
+
+def _configured_origins(name, *, debug):
+    origins = [item.strip().rstrip("/") for item in os.environ.get(name, "").split(",") if item.strip()]
+    for origin in origins:
+        try:
+            parsed = urlparse(origin)
+            parsed.port
+        except ValueError as exc:
+            raise RuntimeError(f"{name} contains a malformed origin.") from exc
+        allowed_schemes = {"http", "https"} if debug else {"https"}
+        if (
+            parsed.scheme not in allowed_schemes
+            or not parsed.netloc
+            or parsed.path
+            or parsed.params
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+            or "*" in parsed.netloc
+        ):
+            raise RuntimeError(f"{name} must contain exact {'HTTPS ' if not debug else ''}origins without paths or wildcards.")
+    return origins
+
+
+def _validate_redis_url(value, *, debug):
+    if not value:
+        if debug:
+            return
+        raise RuntimeError("REDIS_URL is required in production for shared API throttling.")
+    try:
+        parsed = urlparse(value)
+        parsed.port
+    except ValueError as exc:
+        raise RuntimeError("REDIS_URL is malformed.") from exc
+    if parsed.scheme not in {"redis", "rediss", "unix"} or (parsed.scheme != "unix" and not parsed.hostname):
+        raise RuntimeError("REDIS_URL must be a valid redis://, rediss://, or unix:// location.")
 
 _hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()
 if _hosts:
@@ -35,6 +128,8 @@ elif DEBUG:
     ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
 else:
     raise RuntimeError("DJANGO_ALLOWED_HOSTS must list the production hostnames.")
+if not DEBUG and ("*" in ALLOWED_HOSTS or any(not host or "/" in host for host in ALLOWED_HOSTS)):
+    raise RuntimeError("Production DJANGO_ALLOWED_HOSTS must contain exact hostnames, without wildcards or paths.")
 
 # Application definition
 
@@ -45,9 +140,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
+    "rest_framework",
+    "accounts",
+    "learning",
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -77,15 +177,11 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 
-# Database
-# https://docs.djangoproject.com/en/6.1/ref/settings/#databases
-
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
+# The project intentionally uses Django's built-in auth.User. App relationships
+# use AUTH_USER_MODEL so a future user-model migration remains explicit.
+# SQLite is local-development only. Production requires PostgreSQL.
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DATABASES = _parse_database_url(DATABASE_URL, debug=DEBUG)
 
 
 # Password validation
@@ -123,13 +219,110 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+}
 
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "false").strip().lower() in {"1", "true", "yes", "on"}
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "KiddoWorld <no-reply@example.invalid>")
+
+# Browser API traffic is credentialed and restricted to exact configured origins.
+CORS_ALLOWED_ORIGINS = _configured_origins("CORS_ALLOWED_ORIGINS", debug=DEBUG)
+CORS_ALLOW_CREDENTIALS = True
+CORS_URLS_REGEX = r"^/api/.*$"
+CSRF_TRUSTED_ORIGINS = _configured_origins("CSRF_TRUSTED_ORIGINS", debug=DEBUG)
+if not DEBUG and (not CORS_ALLOWED_ORIGINS or not CSRF_TRUSTED_ORIGINS):
+    raise RuntimeError("CORS_ALLOWED_ORIGINS and CSRF_TRUSTED_ORIGINS must be configured in production.")
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = "Lax" if DEBUG else "None"
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = "Lax" if DEBUG else "None"
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", "false").lower() == "true"
+if SECURE_HSTS_SECONDS < 0:
+    raise RuntimeError("DJANGO_SECURE_HSTS_SECONDS cannot be negative.")
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+DJANGO_TRUST_PROXY_SSL_HEADER = os.environ.get("DJANGO_TRUST_PROXY_SSL_HEADER", "false").strip().lower() in {"1", "true", "yes", "on"}
+if DJANGO_TRUST_PROXY_SSL_HEADER:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": os.environ.get("API_ANON_RATE", "120/hour"),
+        "user": os.environ.get("API_USER_RATE", "1200/hour"),
+        "auth": os.environ.get("API_AUTH_RATE", "10/hour"),
+        "completion": os.environ.get("API_COMPLETION_RATE", "120/hour"),
+        "typing": os.environ.get("API_TYPING_RATE", "30/hour"),
     },
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
 }
+
+# Completion payloads contain only small JSON aggregates, not free-form text.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get("DATA_UPLOAD_MAX_MEMORY_SIZE", str(64 * 1024)))
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(os.environ.get("DATA_UPLOAD_MAX_NUMBER_FIELDS", "100"))
+
+REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+_validate_redis_url(REDIS_URL, debug=DEBUG)
+if REDIS_URL and not REDIS_URL.startswith("unix://"):
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        }
+    }
+elif DEBUG:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "kiddoworld-local"}}
+elif REDIS_URL:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": REDIS_URL}}
+
+if not DEBUG and EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend":
+    raise RuntimeError("Configure a production email backend for verification and password reset.")
+if not DEBUG and EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
+    sender_email = parseaddr(DEFAULT_FROM_EMAIL)[1]
+    if not EMAIL_HOST or not sender_email or "@" not in sender_email or sender_email.endswith(".invalid"):
+        raise RuntimeError("Configure EMAIL_HOST and a valid owned DEFAULT_FROM_EMAIL in production.")
+    if EMAIL_PORT < 1 or EMAIL_PORT > 65535:
+        raise RuntimeError("EMAIL_PORT must be between 1 and 65535.")
+    if EMAIL_USE_TLS and EMAIL_USE_SSL:
+        raise RuntimeError("Choose either EMAIL_USE_TLS or EMAIL_USE_SSL, not both.")
+    if bool(EMAIL_HOST_USER) != bool(EMAIL_HOST_PASSWORD):
+        raise RuntimeError("Configure both EMAIL_HOST_USER and EMAIL_HOST_PASSWORD, or neither.")
+FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
+if not DEBUG:
+    frontend_origin = urlparse(FRONTEND_BASE_URL)
+    if frontend_origin.scheme != "https" or not frontend_origin.netloc or frontend_origin.path:
+        raise RuntimeError("Production FRONTEND_BASE_URL must be an HTTPS origin without a path.")
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

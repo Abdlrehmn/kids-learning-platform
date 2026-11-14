@@ -1,0 +1,16 @@
+warning: in the working copy of 'backend/config/settings.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/components/english/EnglishWorld.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/components/games/GameHub.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/components/games/GameHubHero.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/components/games/gameCatalog.ts', LF will be replaced by CRLF the next time Git touches it
+ backend/config/settings.py                   | 134 [32m++++++++++++++++++++++++[m[31m---[m
+ backend/config/urls.py                       |   4 [32m+[m[31m-[m
+ frontend/app/games/gamesWorld.css            | 100 [32m++++++++++++++++++++[m
+ frontend/app/typing/page.tsx                 |  22 [32m++++[m[31m-[m
+ frontend/components/WorldNavigation.tsx      |   1 [32m+[m
+ frontend/components/english/EnglishWorld.tsx |   8 [32m++[m
+ frontend/components/games/GameHub.tsx        |  13 [32m+++[m
+ frontend/components/games/GameHubHero.tsx    |  10 [32m+[m[31m-[m
+ frontend/components/games/GameWorldArt.tsx   |  21 [32m++++[m[31m-[m
+ frontend/components/games/gameCatalog.ts     |  16 [32m++[m[31m--[m
+ 10 files changed, 298 insertions(+), 31 deletions(-)

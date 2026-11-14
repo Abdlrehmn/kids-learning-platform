@@ -65,6 +65,17 @@ def get_star_balance(child):
     return child.reward_transactions.aggregate(total=Sum("stars"))["total"] or 0
 
 
+def progress_totals(child):
+    """Counters used by achievements and the rewards summary."""
+    return {
+        "activities_completed": LearningProgress.objects.filter(child=child, is_completed=True).count(),
+        "games_completed": GameSession.objects.filter(
+            child=child, status=GameSession.Status.COMPLETED
+        ).count(),
+        "xp_earned": max(0, get_xp_balance(child)),
+    }
+
+
 def update_streak(child, activity_at=None):
     """Serialize streak updates and ignore delayed events using their UTC instant."""
     activity_at = activity_at or timezone.now()
@@ -123,13 +134,7 @@ def award_daily_bonus(child, activity_date, activity_key):
 
 
 def evaluate_achievements(child):
-    progress_count = LearningProgress.objects.filter(child=child, is_completed=True).count()
-    game_count = GameSession.objects.filter(child=child, status=GameSession.Status.COMPLETED).count()
-    totals = {
-        "activities_completed": progress_count,
-        "games_completed": game_count,
-        "xp_earned": max(0, get_xp_balance(child)),
-    }
+    totals = progress_totals(child)
     earned = []
     for achievement in Achievement.objects.filter(is_active=True):
         if achievement.criterion not in Achievement.Criterion.values:

@@ -1,17 +1,9 @@
 from django.urls import path
 
 from .views import (
-    ChildDetailView,
-    ChildListCreateView,
-    CurrentUserView,
-    DeleteAccountView,
-    LoginView,
-    LogoutView,
-    PasswordResetConfirmView,
-    PasswordResetRequestView,
-    RegisterView,
-    VerifyEmailView,
-    VerificationResendView,
+    ChangePasswordView, ChildDetailView, ChildListCreateView, CurrentUserView,
+    DeleteAccountView, LoginView, LogoutView, PasswordResetConfirmView,
+    PasswordResetRequestView, RegisterView, VerifyEmailView, VerificationResendView,
     csrf_token,
 )
 
@@ -26,6 +18,7 @@ urlpatterns = [
     path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
     path("me/", CurrentUserView.as_view(), name="current-user"),
     path("me/delete/", DeleteAccountView.as_view(), name="delete-account"),
+    path("change-password/", ChangePasswordView.as_view(), name="change-password"),
     path("children/", ChildListCreateView.as_view(), name="child-list"),
     path("children/<int:pk>/", ChildDetailView.as_view(), name="child-detail"),
 ]

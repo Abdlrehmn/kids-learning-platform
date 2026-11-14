@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.contrib.auth import get_user_model, login, logout
+from django.contrib.auth import get_user_model, login, logout, update_session_auth_hash
 from django.contrib.auth.tokens import default_token_generator
 from django.core import signing
 from django.core.mail import send_mail
@@ -18,10 +18,8 @@ from rest_framework.views import APIView
 from .models import ChildProfile, ParentProfile
 from .permissions import IsVerifiedGuardian
 from .serializers import (
-    ChildProfileSerializer,
-    CurrentUserSerializer,
-    LoginSerializer,
-    RegistrationSerializer,
+    ChangePasswordSerializer, ChildProfileSerializer, CurrentUserSerializer,
+    LoginSerializer, RegistrationSerializer,
 )
 
 User = get_user_model()
@@ -146,6 +144,29 @@ class CurrentUserView(APIView):
                 ).data,
             }
         )
+
+    def patch(self, request):
+        """Update guardian display name; other user fields stay untouched."""
+        name = request.data.get("first_name", "")
+        if not isinstance(name, str):
+            raise ValidationError({"first_name": "A name is expected as text."})
+        name = name.strip()
+        if len(name) > 60:
+            raise ValidationError({"first_name": "Keep the name under 60 characters."})
+        request.user.first_name = name
+        request.user.save(update_fields=("first_name",))
+        return self.get(request)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = (permissions.IsAuthenticated, IsVerifiedGuardian)
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        update_session_auth_hash(request, user)
+        return Response({"detail": "Password updated for this account."})
 
 
 @method_decorator(csrf_protect, name="dispatch")

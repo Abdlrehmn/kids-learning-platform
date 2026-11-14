@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Count, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import ValidationError
@@ -9,14 +9,17 @@ from rest_framework.views import APIView
 
 from accounts.models import ChildProfile
 from accounts.permissions import IsVerifiedGuardian
-from .models import ClientSessionClaim, Game, GameSession, LearningSession, XPTransaction
+from .services import (
+    claim_client_session, complete_english_activity, complete_game_session,
+    complete_typing_activity, progress_totals,
+)
+from .models import Achievement, ClientSessionClaim, Game, GameSession, LearningProgress, LearningSession, XPTransaction
 from .serializers import (
-    AchievementSerializer, DailyStreakSerializer, GameCompleteSerializer,
-    GameLevelCompleteSerializer, GameSerializer, GameSessionSerializer, GameStartSerializer,
-    LearningCompleteSerializer, LearningSessionSerializer,
+    AchievementProgressSerializer, AchievementSerializer, DailyStreakSerializer,
+    GameCompleteSerializer, GameLevelCompleteSerializer, GameSerializer, GameSessionSerializer,
+    GameStartSerializer, LearningCompleteSerializer, LearningSessionSerializer,
     RewardTransactionSerializer, TypingCompleteSerializer,
 )
-from .services import claim_client_session, complete_english_activity, complete_game_session, complete_typing_activity
 
 
 def owned_child(request, child_id):
@@ -159,15 +162,48 @@ class ChildSummaryView(APIView):
         child = owned_child(request, child_id)
         transactions = XPTransaction.objects.filter(child=child)
         streak = getattr(child, "daily_streak", None)
+        totals = progress_totals(child)
+        type_progress = {
+            row["activity_type"]: row["total"]
+            for row in LearningProgress.objects.filter(child=child, is_completed=True)
+            .values("activity_type")
+            .annotate(total=Count("id"))
+        }
+        earned_by_achievement = {
+            row.achievement_id: row.earned_at for row in child.achievements.filter(achievement__is_active=True)
+        }
+        achievement_progress = AchievementProgressSerializer(
+            [
+                {
+                    "slug": achievement.slug,
+                    "title": achievement.title,
+                    "description": achievement.description,
+                    "icon_id": achievement.icon_id,
+                    "criterion": achievement.criterion,
+                    "threshold": achievement.threshold,
+                    "earned_at": earned_by_achievement.get(achievement.pk),
+                    "progress": totals.get(achievement.criterion, 0),
+                }
+                for achievement in Achievement.objects.filter(is_active=True)
+            ],
+            many=True,
+        ).data
         return Response({
             "child_id": child.pk,
             "xp": transactions.aggregate(total=Sum("amount"))["total"] or 0,
             "stars": transactions.aggregate(total=Sum("stars"))["total"] or 0,
             "streak": DailyStreakSerializer(streak).data if streak else {"current_days": 0, "best_days": 0, "last_activity_date": None},
+            "learning_progress": {
+                "games_completed": totals["games_completed"],
+                "activities_completed": totals["activities_completed"],
+                "english_completed": type_progress.get("english", 0),
+                "typing_completed": type_progress.get("typing", 0),
+            },
             "achievements": AchievementSerializer(child.achievements.select_related("achievement"), many=True).data,
+            "achievement_progress": achievement_progress,
             "recent_rewards": RewardTransactionSerializer(transactions[:50], many=True).data,
             "recent_games": GameSessionSerializer(child.game_sessions.select_related("game")[:20], many=True).data,
-            "recent_learning": LearningSessionSerializer(child.learning_sessions[:20], many=True).data,
+            "recent_learning": LearningSessionSerializer(child.learning_sessions.all()[:20], many=True).data,
         })
 
 

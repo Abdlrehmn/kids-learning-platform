@@ -55,6 +55,72 @@ class AccountAPITests(TestCase):
         self.assertEqual(child_response.status_code, 201)
         self.assertTrue(ChildProfile.objects.filter(guardian=user, nickname="Ari").exists())
 
+    def test_change_password_validates_current_and_updates_session(self):
+        user = get_user_model().objects.create_user(
+            username="swap@example.com", email="swap@example.com", password="OldPass!7481"
+        )
+        ParentProfile.objects.create(user=user, guardian_attested_at=user.date_joined, email_verified_at=user.date_joined)
+        client = APIClient()
+        client.force_authenticate(user)
+        wrong_current = client.post("/api/v1/auth/change-password/", {
+            "current_password": "wrong", "new_password": "FreshPass!2948",
+        }, format="json")
+        self.assertEqual(wrong_current.status_code, 400)
+        self.assertIn("current", str(wrong_current.data).lower())
+        weak = client.post("/api/v1/auth/change-password/", {
+            "current_password": "OldPass!7481", "new_password": "short",
+        }, format="json")
+        self.assertEqual(weak.status_code, 400)
+        same = client.post("/api/v1/auth/change-password/", {
+            "current_password": "OldPass!7481", "new_password": "OldPass!7481",
+        }, format="json")
+        self.assertEqual(same.status_code, 400)
+        changed = client.post("/api/v1/auth/change-password/", {
+            "current_password": "OldPass!7481", "new_password": "FreshPass!2948",
+        }, format="json")
+        self.assertEqual(changed.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("FreshPass!2948"))
+        # The same authenticated session stays valid after the swap.
+        self.assertEqual(client.get("/api/v1/auth/me/").status_code, 200)
+
+    def test_me_patch_updates_guardian_name_only(self):
+        user = get_user_model().objects.create_user(
+            username="named@example.com", email="named@example.com", password="SafePass!12345"
+        )
+        ParentProfile.objects.create(user=user, guardian_attested_at=user.date_joined, email_verified_at=user.date_joined)
+        client = APIClient()
+        client.force_authenticate(user)
+        response = client.patch("/api/v1/auth/me/", {"first_name": "Rumman"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["user"]["first_name"], "Rumman")
+        user.refresh_from_db()
+        self.assertEqual(user.first_name, "Rumman")
+        too_long = client.patch("/api/v1/auth/me/", {"first_name": "x" * 61}, format="json")
+        self.assertEqual(too_long.status_code, 400)
+        self.assertIn("60", str(too_long.data))
+
+    def test_guardian_cannot_edit_or_delete_another_guardians_child(self):
+        user = get_user_model().objects.create_user(
+            username="watch@example.com", email="watch@example.com", password="SafePass!12345"
+        )
+        ParentProfile.objects.create(user=user, guardian_attested_at=user.date_joined, email_verified_at=user.date_joined)
+        other = get_user_model().objects.create_user(
+            username="owner@example.com", email="owner@example.com", password="SafePass!12345"
+        )
+        ParentProfile.objects.create(user=other, guardian_attested_at=other.date_joined, email_verified_at=other.date_joined)
+        other_child = ChildProfile.objects.create(guardian=other, nickname="Milo")
+        client = APIClient()
+        client.force_authenticate(user)
+        edit = client.patch(
+            f"/api/v1/auth/children/{other_child.pk}/", {"nickname": "Hacked"}, format="json"
+        )
+        self.assertEqual(edit.status_code, 404)
+        remove = client.delete(f"/api/v1/auth/children/{other_child.pk}/")
+        self.assertEqual(remove.status_code, 404)
+        other_child.refresh_from_db()
+        self.assertEqual(other_child.nickname, "Milo")
+
     def test_guardian_can_delete_their_account_after_password_confirmation(self):
         user = get_user_model().objects.create_user(username="erase@example.com", email="erase@example.com", password="ErasePass!12345")
         ParentProfile.objects.create(user=user, guardian_attested_at=user.date_joined, email_verified_at=user.date_joined)

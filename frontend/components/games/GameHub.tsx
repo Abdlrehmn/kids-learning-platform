@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import WorldNavigation from "@/components/WorldNavigation";
+import { api } from "@/lib/api";
 import { fireConfetti } from "@/components/Confetti";
 import GameGrid from "@/components/games/GameGrid";
 import GameHubHero from "@/components/games/GameHubHero";
@@ -66,6 +67,8 @@ export default function GameHub() {
   }, [selectedGame]);
 
   const finishLevel = (gameId: GameId, level: number, score: number) => {
+    const childId = window.localStorage.getItem("kiddoworld-active-child-id");
+    const clientSessionId = window.crypto.randomUUID();
     setProgress((current) => {
       const record = current.records[gameId] ?? { level: 1, bestScore: 0, levelsCompleted: 0 };
       return {
@@ -81,6 +84,16 @@ export default function GameHub() {
         },
       };
     });
+    if (childId) {
+      void api<{ xp_balance: number }>("game-sessions/complete/", {
+        method: "POST",
+        body: JSON.stringify({
+          child_id: Number(childId), game: gameId, client_session_id: clientSessionId,
+          level, score, rounds_completed: 5,
+        }),
+      }).then(({ xp_balance }) => setProgress((current) => ({ ...current, xp: xp_balance })))
+        .catch(() => undefined);
+    }
     fireConfetti(window.innerWidth / 2, window.innerHeight * 0.35, 28);
   };
 

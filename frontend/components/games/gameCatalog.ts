@@ -82,15 +82,15 @@ export const categories = [
 export const popularGameIds: GameId[] = ["word-match", "spelling-bee", "memory-cards", "math-adventure", "noun-detective", "sentence-builder"];
 
 export const gameArtById: Record<GameId, GameArtKind> = {
-  "word-match": "letter-tiles", "picture-match": "picture-match", "color-match": "color-palette", "spelling-bee": "spelling-bee",
-  "missing-letters": "alphabet", "word-scramble": "letter-tiles", "memory-cards": "memory-cards", "vocabulary-quiz": "letter-tiles",
+  "word-match": "word-card-match", "picture-match": "picture-match", "color-match": "color-palette", "spelling-bee": "spelling-bee",
+  "missing-letters": "missing-letters", "word-scramble": "letter-tiles", "memory-cards": "memory-match", "vocabulary-quiz": "topic-quiz",
   "noun-detective": "noun-detective", "verb-action": "action", "adjective-explorer": "color-palette", "sentence-builder": "sentence-builder",
-  "treasure-hunt": "treasure-map", "punctuation-fixer": "punctuation", "story-sequence": "sequence", "listening-detective": "sound-wave",
-  "word-sorting": "sorting", "odd-one-out": "odd-one-out", crossword: "crossword", "guess-the-word": "alphabet", "build-a-sentence": "sentence-builder",
-  "alphabet-hunt": "alphabet", "math-adventure": "number-stacks", "number-quest": "sequence", "addition-adventure": "addition", "subtraction-challenge": "subtraction", "multiplication-stars": "multiplication", "division-explorer": "division", "shape-detective": "shapes", "counting-adventure": "counting", "number-sequence": "sequence",
-  "picture-pairs": "memory-cards", "word-memory": "letter-tiles", "sound-memory": "sound-wave", "sequence-memory": "sequence", "animal-match": "animal-cards",
-  "jigsaw-puzzle": "word-match", "picture-puzzle": "picture-match", "missing-piece": "shapes", "shape-builder": "house", "letter-puzzle": "letter-tiles", "pattern-builder": "sorting",
-  "find-difference": "noun-detective", "pattern-detective": "sequence", "object-sorting": "sorting", "logic-quest": "treasure-map",
+  "treasure-hunt": "treasure-map", "punctuation-fixer": "punctuation", "story-sequence": "storybook", "listening-detective": "sound-wave",
+  "word-sorting": "sorting", "odd-one-out": "odd-one-out", crossword: "crossword", "guess-the-word": "crossword", "build-a-sentence": "build-sentence",
+  "alphabet-hunt": "alphabet", "math-adventure": "number-stacks", "number-quest": "number-quest", "addition-adventure": "addition", "subtraction-challenge": "subtraction", "multiplication-stars": "multiplication", "division-explorer": "division", "shape-detective": "shapes", "counting-adventure": "counting", "number-sequence": "number-sequence",
+  "picture-pairs": "memory-cards", "word-memory": "word-memory-cards", "sound-memory": "sound-wave", "sequence-memory": "sequence-memory", "animal-match": "animal-cards",
+  "jigsaw-puzzle": "word-match", "picture-puzzle": "picture-puzzle", "missing-piece": "shapes", "shape-builder": "house", "letter-puzzle": "letter-puzzle", "pattern-builder": "sequence",
+  "find-difference": "odd-one-out", "pattern-detective": "noun-detective", "object-sorting": "sorting", "logic-quest": "treasure-map",
 };
 
 export const featuredGameIdByCategory: Record<CategoryId, GameId> = {

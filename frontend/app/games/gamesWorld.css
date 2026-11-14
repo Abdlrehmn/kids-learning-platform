@@ -2121,3 +2121,103 @@
   .hero-floating-island,
   .hero-sparkles { animation: none !important; }
 }
+
+/* Restore the compact Games World layout from the pre-refresh implementation
+   (6c0d16e) while keeping the current filters, registry and progress tools. */
+.games-world {
+  padding: 104px 24px 60px;
+  background: radial-gradient(ellipse at 50% 0%,#ddf5ff 0,#f0f5ff 42%,#f8f5ff 100%);
+}
+.games-main { width: min(1120px,100%); margin: 0 auto; }
+.games-hero {
+  display: block;
+  min-height: 220px;
+  margin: 0;
+  padding: 34px 40px;
+  border: 1px solid rgba(255,255,255,.9);
+  border-radius: 30px;
+  background: linear-gradient(118deg,#238ce8,#43b8f3 54%,#738ddf);
+  box-shadow: 0 18px 55px rgba(67,92,174,.14);
+}
+.games-hero::after { display: none; }
+.games-hero-illustration { opacity: .32; object-position: right center; }
+.games-hero-copy { width: min(600px,100%); text-align: left; }
+.games-hero-kicker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #ecf8ff;
+  font-size: 12px;
+  letter-spacing: .09em;
+  text-shadow: none;
+  backdrop-filter: none;
+}
+.games-hero-kicker span { display: none; }
+.games-hero-tagline { display: none; }
+.games-hero-copy h1 { justify-content: flex-start; margin: 5px 0; font-size: clamp(34px,6vw,58px); }
+.games-hero-description { margin: 8px 0; font-size: 16px; }
+.games-hero-actions { justify-content: flex-start; }
+.games-xp { top: auto; right: 34px; bottom: 24px; }
+.games-dashboard {
+  display: block;
+  width: 100%;
+  margin: 18px auto 0;
+  padding: 24px;
+  border-radius: 30px;
+  background: rgba(255,255,255,.88);
+  box-shadow: 0 18px 55px rgba(67,92,174,.12);
+}
+.games-sidebar { position: static; display: block; margin-bottom: 21px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.games-sidebar-head { margin-bottom: 10px; padding: 0 2px; }
+.games-category-list { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+.games-category { min-height: 52px; padding: 6px 8px; }
+.games-promo { display: none; }
+.games-library { gap: 14px; }
+.games-library-head { align-items: end; }
+.games-library-head h2 { font-size: 30px; }
+.games-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 13px; }
+.games-card { min-height: 285px; border-radius: 21px; }
+.games-grid .games-card .games-card-art { height: 130px; }
+.games-card h3 { font-size: 16px; }
+.games-card p { font-size: 11px; }
+.games-grid .games-card .games-card-action { min-height: 40px; }
+.games-session-wrap { width: 100%; margin-top: 18px; }
+.games-footer { width: 100%; }
+
+/* Keep KiddoWorld's existing navigation geometry; show the active destination
+   with a little more weight instead of a colored pill. */
+.games-world .space-nav-link,
+.games-world .space-nav-link:hover,
+.games-world .space-nav-link.is-active {
+  background: transparent;
+  color: #465b7c;
+  box-shadow: none;
+}
+.games-world .space-nav-link.is-active { font-weight: 950; }
+.games-world .space-nav-link:hover { color: #267db3; }
+.games-world .space-nav-link.is-active .space-nav-icon { color: #267db3; }
+
+@media (max-width: 900px) {
+  .games-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .games-category-list { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media (max-width: 700px) {
+  .games-world { padding: 88px 12px 35px; }
+  .games-hero { min-height: 300px; padding: 27px 22px 95px; }
+  .games-hero-copy { padding: 0 0 120px; text-align: center; }
+  .games-hero-kicker,.games-hero-actions { justify-content: center; }
+  .games-hero-copy h1 { justify-content: center; font-size: clamp(36px,10vw,50px); }
+  .games-hero-description { margin: 8px auto; }
+  .games-hero-illustration { right: 0; bottom: 0; top: auto; width: 100%; height: 55%; object-position: right bottom; opacity: .42; mask-image: linear-gradient(180deg,transparent 0,#000 38%); }
+  .games-xp { left: 20px; right: auto; bottom: 16px; }
+  .games-dashboard { margin-top: 15px; padding: 19px; }
+  .games-library-head { display: block; }
+  .games-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+  .games-card { min-height: 270px; padding: 10px; }
+}
+@media (max-width: 390px) {
+  .games-dashboard { padding: 14px; }
+  .games-category-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}

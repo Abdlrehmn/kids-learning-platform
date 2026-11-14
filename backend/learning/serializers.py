@@ -65,6 +65,19 @@ class AchievementSerializer(serializers.ModelSerializer):
         fields = ("slug", "title", "description", "earned_at", "progress_at_award")
 
 
+class AchievementProgressSerializer(serializers.Serializer):
+    """An entry of the achievement catalog plus the child's real progress."""
+
+    slug = serializers.CharField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    icon_id = serializers.CharField()
+    criterion = serializers.CharField()
+    threshold = serializers.IntegerField()
+    earned_at = serializers.DateTimeField(allow_null=True)
+    progress = serializers.IntegerField()
+
+
 class LearningSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = LearningSession

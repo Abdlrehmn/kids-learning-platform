@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CelebrationConfetti, { fireConfetti } from "@/components/Confetti";
 import SparkleTrail from "@/components/SparkleTrail";
 import WorldNavigation from "@/components/WorldNavigation";
@@ -15,6 +15,7 @@ import TypingScene from "@/components/typing/TypingScene";
 import useReducedMotion from "@/components/typing/useReducedMotion";
 import useTypingSession from "@/components/typing/useTypingSession";
 import { MODE_OPTIONS, PRACTICE_TEXT } from "@/components/typing/practiceContent";
+import { api } from "@/lib/api";
 
 export default function TypingAcademyPage() {
   const [showGreeting, setShowGreeting] = useState(true);
@@ -50,6 +51,7 @@ export default function TypingAcademyPage() {
   } = useTypingSession();
 
   const reducedMotion = useReducedMotion();
+  const submittedCompletion = useRef<number | null>(null);
   const modeOption = MODE_OPTIONS.find((option) => option.id === mode) ?? MODE_OPTIONS[0];
 
   useEffect(() => {
@@ -82,6 +84,24 @@ export default function TypingAcademyPage() {
 
     fireConfetti(originX, originY, 22);
   }, [reducedMotion, roundCelebration]);
+
+  useEffect(() => {
+    if (!isComplete || completedAt === null || submittedCompletion.current === completedAt) return;
+    submittedCompletion.current = completedAt;
+    const childId = window.localStorage.getItem("kiddoworld-active-child-id");
+    if (!childId) return;
+    void api("learning/typing/complete/", {
+      method: "POST",
+      body: JSON.stringify({
+        child_id: Number(childId),
+        activity_key: `${mode}-${promptIndex}`,
+        client_session_id: window.crypto.randomUUID(),
+        correct_words: Math.min(completedWordFlags.filter(Boolean).length, 80),
+        completed_rounds: 1,
+        elapsed_ms: Math.max(0, completedAt - (startTime ?? completedAt)),
+      }),
+    }).catch(() => undefined);
+  }, [completedAt, completedWordFlags, isComplete, mode, promptIndex, startTime]);
 
   const recentlyCompletedWord = wordCelebration
     ? segments.some(

@@ -62,11 +62,11 @@ const learningZones = [
     id: "rewards",
     title: "Rewards",
     subtitle: "Stars, badges & level ups",
-    description: "Stars and badges from English, Typing, and Games will all be collected here soon.",
+    description: "Every star, XP point and badge you earn is collected in your friendly trophy room.",
     symbol: "treasure",
     color: "rewards",
-    state: "Coming soon",
-    href: null,
+    state: "Ready to play",
+    href: "/rewards",
   },
 ] as const;
 
@@ -175,7 +175,7 @@ export default function Home() {
             <span className="space-benefit-divider" aria-hidden="true" />
             <div className="space-benefit">
               <span className="space-benefit-badge space-benefit-badge--trophy"><BenefitIcon kind="trophy" /></span>
-              <span><strong>Rewards Ahead</strong><small>Progress celebrations soon</small></span>
+              <span><strong>Rewards Ahead</strong><small>Stars, XP &amp; badges collected</small></span>
             </div>
           </section>
         </ScrollReveal>
@@ -223,15 +223,9 @@ export default function Home() {
 
                 return (
                   <ScrollReveal key={zone.id} delay={index * 80} className={`space-zone-reveal space-zone-reveal--${zone.color}`}>
-                    {zone.href ? (
-                      <Link id={zone.id} href={zone.href} className={`space-zone-card space-zone-card--${zone.color}`}>
-                        {contents}
-                      </Link>
-                    ) : (
-                      <article id={zone.id} className={`space-zone-card space-zone-card--${zone.color}`} aria-label={`${zone.title}, coming soon`}>
-                        {contents}
-                      </article>
-                    )}
+                    <Link id={zone.id} href={zone.href} className={`space-zone-card space-zone-card--${zone.color}`}>
+                      {contents}
+                    </Link>
                   </ScrollReveal>
                 );
               })}

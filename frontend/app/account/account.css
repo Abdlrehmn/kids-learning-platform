@@ -1,0 +1,33 @@
+.account-page { min-height: 100vh; background: #fffaf1; color: #26364b; }
+.account-main { width: min(100% - 40px, 1040px); margin: 0 auto; padding: clamp(40px, 7vw, 88px) 0 100px; }
+.account-heading { text-align: center; margin: 0 auto 34px; max-width: 620px; }
+.account-heading > span { color: #e38b37; font-size: .76rem; letter-spacing: .16em; font-weight: 800; }
+.account-heading h1 { color: #284d72; font-size: clamp(2rem, 5vw, 3.4rem); margin: 10px 0; }
+.account-heading p { margin: 0; color: #6d7d8c; line-height: 1.65; }
+.account-panel { max-width: 540px; margin: 0 auto; padding: clamp(22px, 5vw, 38px); border: 1px solid #e7e7df; border-radius: 24px; background: #fff; box-shadow: 0 18px 48px #29405b12; }
+.account-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 5px; margin-bottom: 25px; border-radius: 14px; background: #f5f6f2; }
+.account-tabs button { border: 0; border-radius: 10px; padding: 11px; color: #627487; background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
+.account-tabs button[aria-pressed="true"] { background: #fff; color: #284d72; box-shadow: 0 2px 8px #1e334010; }
+.account-form { display: grid; gap: 17px; }
+.account-form label, .account-add-child > label { display: grid; gap: 7px; color: #384e62; font-size: .91rem; font-weight: 700; }
+.account-form input:not([type="checkbox"]), .account-add-child input { width: 100%; min-height: 46px; border: 1px solid #dce3e6; border-radius: 11px; padding: 0 13px; background: #fff; color: #26364b; font: inherit; outline: none; }
+.account-form input:focus, .account-add-child input:focus { border-color: #63a9c6; box-shadow: 0 0 0 3px #63a9c622; }
+.account-consent { display: flex !important; grid-template-columns: 18px 1fr; align-items: start; gap: 10px !important; font-weight: 500 !important; line-height: 1.5; }
+.account-consent input { margin-top: 3px; accent-color: #4d9b83; }
+.account-primary { min-height: 46px; border: 0; border-radius: 12px; padding: 0 18px; background: #ef9d4c; color: white; font: inherit; font-weight: 800; cursor: pointer; transition: transform .18s ease, filter .18s ease; }
+.account-primary:hover { transform: translateY(-1px); filter: brightness(1.04); }
+.account-primary:disabled { opacity: .65; cursor: wait; }
+.account-privacy { margin: 20px 0 0; color: #7b8993; font-size: .83rem; line-height: 1.55; }
+.account-reset-link { margin-top: 15px; border: 0; padding: 0; background: transparent; color: #56778c; font: inherit; font-size: .88rem; cursor: pointer; }
+.account-message { color: #315f69; background: #eef8f4; border-radius: 10px; padding: 12px 14px; line-height: 1.5; }
+.account-user { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid #edf0ed; }
+.account-user div { display: grid; gap: 4px; min-width: 0; }.account-user span, .account-children small { color: #7b8993; font-size: .85rem; }.account-user strong { overflow-wrap: anywhere; }
+.account-user button { border: 0; background: transparent; color: #59778c; font: inherit; cursor: pointer; }
+.account-user .account-delete { color: #a45e55; font-size: .85rem; }.account-remove-child { border: 0; background: transparent; color: #a45e55; font: inherit; font-size: .8rem; cursor: pointer; }
+.account-children li button { border: 1px solid #d9e5e3; border-radius: 9px; padding: 6px 10px; background: #fff; color: #426d65; font: inherit; font-size: .83rem; font-weight: 700; cursor: pointer; }.account-children li button[aria-pressed="true"] { border-color: #bdddcf; background: #eff8f2; }
+.account-rewards { display: flex; flex-wrap: wrap; gap: 9px; margin: 15px 0 22px; }.account-rewards span { padding: 9px 12px; border-radius: 11px; background: #f6f7f2; color: #6d7d8c; font-size: .84rem; }.account-rewards b { color: #284d72; }
+.account-panel h2 { margin: 24px 0 12px; color: #284d72; }
+.account-children { list-style: none; display: grid; gap: 9px; padding: 0; margin: 0 0 22px; }.account-children li { display: flex; gap: 10px; align-items: center; padding: 12px; border: 1px solid #edf0ed; border-radius: 12px; }.account-children li > span { color: #efa044; }.account-children small { margin-left: auto; }
+.account-add-child > div { display: flex; gap: 8px; margin-top: 8px; }.account-add-child input { min-width: 0; }.account-add-child button { white-space: nowrap; }
+@media (max-width: 520px) { .account-main { width: min(100% - 24px, 540px); padding-top: 34px; }.account-add-child > div { flex-direction: column; }.account-add-child button { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .account-primary { transition: none; } }

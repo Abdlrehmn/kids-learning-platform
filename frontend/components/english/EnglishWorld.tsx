@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import Link from "next/link";
 import WorldNavigation from "@/components/WorldNavigation";
+import { api } from "@/lib/api";
 import LearningZoneIsland from "@/components/3d/LearningZoneIsland";
 import { fireConfetti } from "@/components/Confetti";
 import AdventureGlyph from "./AdventureGlyph";
@@ -1194,6 +1195,13 @@ function useEnglishProgress() {
       dailyAwards: earnsDaily && todayKey && !current.dailyAwards.includes(todayKey) ? [...current.dailyAwards, todayKey] : current.dailyAwards,
       lastActivityId: id,
     }));
+    const childId = window.localStorage.getItem("kiddoworld-active-child-id");
+    if (childId) {
+      void api("learning/english/complete/", {
+        method: "POST",
+        body: JSON.stringify({ child_id: Number(childId), activity_key: id, client_session_id: window.crypto.randomUUID() }),
+      }).catch(() => undefined);
+    }
     if (isNew || earnsDaily) fireConfetti(window.innerWidth / 2, window.innerHeight * 0.36, 24);
   }, [progress.completed, progress.dailyAwards, todayKey, todayTarget?.activityId]);
 

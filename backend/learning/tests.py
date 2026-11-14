@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from accounts.models import ChildProfile, ParentProfile
 from .activity_registry import is_supported_english_activity, is_supported_typing_activity
 from .models import Achievement, ClientSessionClaim, DailyStreak, Game, GameSession, LearningProgress, LearningSession, XPTransaction
-from .services import complete_english_activity, complete_typing_activity, update_streak
+from .services import complete_english_activity, complete_typing_activity, evaluate_achievements, update_streak
 
 
 class LearningAPITests(TestCase):
@@ -282,6 +282,40 @@ class LearningAPITests(TestCase):
         response = self.client.post("/api/v1/game-sessions/complete/", payload, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(XPTransaction.objects.filter(child=self.child, reason="game_level").count(), 1)
+
+    def test_summary_lists_all_active_achievements_with_true_progress(self):
+        # One completed game session and one completed learning activity mean
+        # the child is 1/5 towards "Game Explorer" and has earned "First Game",
+        # "Learning Star" and the 100 XP badge stays locked at 0/100.
+        game = Game.objects.get(slug="word-match")
+        GameSession.objects.create(
+            child=self.child, game=game, client_session_id=uuid.uuid4(),
+            status=GameSession.Status.COMPLETED, score=100, rounds_completed=5,
+            completed_at=timezone.now(),
+        )
+        LearningProgress.objects.create(
+            child=self.child, activity_type="english", activity_key="story-lantern",
+            is_completed=True, completion_count=1, last_completed_at=timezone.now(),
+        )
+        evaluate_achievements(self.child)
+        response = self.client.get(f"/api/v1/children/{self.child.pk}/summary/")
+        self.assertEqual(response.status_code, 200)
+        by_slug = {row["slug"]: row for row in response.data["achievement_progress"]}
+        self.assertEqual(
+            set(by_slug), {"first-game", "five-games", "first-activity", "ten-activities", "hundred-xp"}
+        )
+        self.assertTrue(by_slug["first-game"]["earned_at"])
+        self.assertFalse(by_slug["five-games"]["earned_at"])
+        self.assertEqual(by_slug["five-games"]["progress"], 1)
+        self.assertEqual(by_slug["five-games"]["threshold"], 5)
+        self.assertEqual(
+            response.data["learning_progress"],
+            {"games_completed": 1, "activities_completed": 1, "english_completed": 1, "typing_completed": 0},
+        )
+        self.assertEqual({row["slug"] for row in response.data["achievements"] if row["earned_at"]}, {"first-game", "first-activity"})
+        # The pre-existing account-page contract keeps xp, stars and streak.
+        for key in ("xp", "stars", "streak", "recent_rewards"):
+            self.assertIn(key, response.data)
 
     def test_game_completion_rejects_out_of_range_score_and_rounds(self):
         game = Game.objects.get(slug="word-match")

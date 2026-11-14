@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { fireConfetti } from "@/components/Confetti";
 
 type WorldNavigationProps = {
-  active?: "home" | "typing" | "english" | "games";
+  active?: "home" | "typing" | "english" | "games" | "rewards" | "account";
 };
 
 const destinations = [
@@ -13,7 +13,8 @@ const destinations = [
   { label: "Typing", href: "/typing", key: "typing", icon: "⌨" },
   { label: "English", href: "/english", key: "english", icon: "▣" },
   { label: "Games", href: "/games", key: "games", icon: "✣" },
-  { label: "Rewards", href: "/#rewards", key: "rewards", icon: "♜" },
+  { label: "Rewards", href: "/rewards", key: "rewards", icon: "♜" },
+  { label: "Family", href: "/account", key: "account", icon: "○" },
 ] as const;
 
 function BrandStar() {
